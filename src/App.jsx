@@ -627,7 +627,7 @@ export default function App() {
             <div className="relative z-10">
                 <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2"><img 
   src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-  className="w-24 h-24 object-contain"
+  className="w-14 h-14 object-contain"
   alt="Logo"
 /> Edición Táctica</div>
                 <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-red-500 bg-white px-2 skew-x-[-10deg] inline-block">REYES</span> 2026</h2>
@@ -768,7 +768,7 @@ export default function App() {
         <div className="flex flex-col items-center mb-10 text-white border-b border-green-700 pb-6">
           <img 
   src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-  className="w-8 h-8 object-contain"
+  className="w-24 h-24 object-contain"
   alt="Logo"
 />
           <h1 className="text-center font-black italic text-lg leading-tight tracking-tight">COPA DE LOS <br/><span className="text-red-500 bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES 2026</span></h1>
