@@ -781,14 +781,13 @@ export default function App() {
           ))}
         </nav>
         <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v3.9 Táctica</div>
-      <div className="flex items-center gap-2 text-white font-black italic">
-  <img 
-    src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-    className="w-24 h-24 object-contain"
-    alt="Logo"
-  />
-  <span className="text-5xl">COPA REYES</span>
-</div>
+      </div>
+      <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
+         <div className="flex items-center gap-2 text-white font-black italic"><img 
+  src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
+  className="w-24 h-24 object-contain"
+  alt="Logo"
+/> COPA REYES</div>
          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">{mobileMenuOpen ? <X /> : <Menu />}</button>
       </div>
       {mobileMenuOpen && (
