@@ -1,14 +1,17 @@
 /* 1. Cargar la fuente web PRIMERO */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+@import url('[https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap)');
 
 /* 2. Cargar las directivas de Tailwind */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* 3. Definir la fuente base para todo el sitio */
+/* 3. Definir la fuente base y el fondo con @apply */
 body {
   font-family: 'Inter', sans-serif;
+  
+  /* Aquí usamos @apply para que Tailwind ponga el fondo */
+  @apply bg-lime-50 text-green-900;
 }
 
 
