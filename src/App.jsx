@@ -27,7 +27,7 @@ import {
   Trash2, 
   Activity, 
   Clock, 
-  Crown, // Dejé Crown por si la quieres usar en otro lado
+  Crown,
   Timer,
   Flag,
   ShieldAlert,
@@ -38,14 +38,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-// --- NUEVA CONSTANTE PARA EL LOGO ---
-const LOGO_URL = "https://i.postimg.cc/T1xy0cy4/IMG-4967.png"; 
-
 // --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
-// Nota: En este entorno, las variables __firebase_config y __initial_auth_token 
-// deberían usarse si estás en Canvas, pero estamos replicando tu uso de import.meta.env
-// para mantener la coherencia con tu código.
-
 const firebaseConfig = {
     // Usamos import.meta.env.VITE_... para leer las variables de Vercel/Vite
     apiKey: import.meta.env.VITE_API_KEY,
@@ -102,7 +95,7 @@ const Button = ({ onClick, children, variant = "primary", className = "", disabl
       className={`px-4 py-2 rounded-lg text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${variants[variant]} ${className}`}
     >
       {children}
-    </Button>
+    </button>
   );
 };
 
@@ -525,7 +518,7 @@ export default function App() {
                              
                              <div className="my-4 border-t border-green-50 border-dashed"></div>
                              
-                             <StatRow label="Faltas" valA={stats.foulsA} valB={stats.foulsB} total={stats.foulsA + stats.fouulsB} />
+                             <StatRow label="Faltas" valA={stats.foulsA} valB={stats.foulsB} total={stats.foulsA + stats.foulsB} />
                              <StatRow label="Amarillas" valA={stats.yellowA} valB={stats.yellowB} total={stats.yellowA + stats.yellowB} />
                              <StatRow label="Rojas" valA={stats.redA} valB={stats.redB} total={stats.redA + stats.redB} />
                           </div>
@@ -632,16 +625,7 @@ export default function App() {
       <div className="space-y-6 animate-in fade-in duration-500">
         <div className="relative rounded-2xl overflow-hidden bg-green-800 p-8 shadow-xl text-white mb-8 border-b-4 border-red-600">
             <div className="relative z-10">
-                <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2">
-                    {/* LOGO EN EL DASHBOARD */}
-                    <img 
-                        src={LOGO_URL} 
-                        alt="Logo Copa Reyes" 
-                        className="h-4 w-4 rounded-full object-cover" 
-                        onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/40x40/4d7c0f/ffffff?text=CR"; e.target.className="h-4 w-4"}}
-                    />
-                    Edición Táctica
-                </div>
+                <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2"><Crown size={16} /> Edición Táctica</div>
                 <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-red-500 bg-white px-2 skew-x-[-10deg] inline-block">REYES</span> 2026</h2>
             </div>
         </div>
@@ -776,18 +760,9 @@ export default function App() {
         }}
       />
 
-      {/* --- BARRA DE NAVEGACIÓN LATERAL (DESKTOP) --- */}
       <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-green-800 flex-col p-6 z-50 shadow-2xl border-r border-green-700">
         <div className="flex flex-col items-center mb-10 text-white border-b border-green-700 pb-6">
-          
-          {/* LOGO GRANDE */}
-          <img 
-            src={LOGO_URL} 
-            alt="Logo Copa Reyes" 
-            className="h-12 w-12 mb-2 rounded-full object-cover shadow-lg" 
-            onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/48x48/4d7c0f/ffffff?text=CR"; e.target.className="h-12 w-12 mb-2 rounded-full shadow-lg"}}
-          />
-          
+          <Crown size={48} className="mb-2 text-yellow-400 drop-shadow-md" />
           <h1 className="text-center font-black italic text-lg leading-tight tracking-tight">COPA DE LOS <br/><span className="text-red-500 bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES 2026</span></h1>
         </div>
         <nav className="space-y-2 flex-1">
@@ -799,23 +774,10 @@ export default function App() {
         </nav>
         <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v3.9 Táctica</div>
       </div>
-      
-      {/* --- BARRA SUPERIOR (MÓVIL) --- */}
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
-         <div className="flex items-center gap-2 text-white font-black italic">
-            {/* LOGO PEQUEÑO */}
-            <img 
-              src={LOGO_URL} 
-              alt="Logo Copa Reyes" 
-              className="h-6 w-6 rounded-full object-cover" 
-              onError={(e) => { e.target.onerror = null; e.target.src = "https://placehold.co/24x24/4d7c0f/ffffff?text=CR"; e.target.className="h-6 w-6"}}
-            />
-            COPA REYES
-         </div>
+         <div className="flex items-center gap-2 text-white font-black italic"><Crown size={20} className="text-yellow-400"/> COPA REYES</div>
          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">{mobileMenuOpen ? <X /> : <Menu />}</button>
       </div>
-      
-      {/* --- MENÚ MÓVIL PANTALLA COMPLETA --- */}
       {mobileMenuOpen && (
           <div className="md:hidden fixed inset-0 bg-green-900/95 z-50 flex flex-col items-center justify-center gap-8">
               <button onClick={() => setMobileMenuOpen(false)} className="absolute top-4 right-4 text-white"><X size={32} /></button>
@@ -824,7 +786,6 @@ export default function App() {
               ))}
           </div>
       )}
-      
       <main className="md:pl-64 p-4 md:p-8 max-w-6xl mx-auto">
          {selectedMatchId ? <MatchDetail match={matches.find(m => m.id === selectedMatchId)} onBack={() => setSelectedMatchId(null)} /> : (
             <>{view === 'dashboard' && <DashboardView />}{view === 'teams' && <TeamsView />}{view === 'matches' && <MatchesView />}</>
@@ -833,4 +794,5 @@ export default function App() {
     </div>
   );
 }
+    
 
