@@ -55,11 +55,6 @@ const db = getFirestore(app);
 // Usamos el Project ID como App ID
 const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id'; // <--- El App ID se lee del PROJECT_ID
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-// Usamos el Project ID como App ID
-const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
 
 // --- UTILIDADES ---
 const playerPositions = [
