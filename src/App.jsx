@@ -625,7 +625,11 @@ export default function App() {
       <div className="space-y-6 animate-in fade-in duration-500">
         <div className="relative rounded-2xl overflow-hidden bg-green-800 p-8 shadow-xl text-white mb-8 border-b-4 border-red-600">
             <div className="relative z-10">
-                <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2"><Crown size={16} /> Edición Táctica</div>
+                <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2"><img 
+  src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
+  className="w-8 h-8 object-contain"
+  alt="Logo"
+/> Edición Táctica</div>
                 <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-red-500 bg-white px-2 skew-x-[-10deg] inline-block">REYES</span> 2026</h2>
             </div>
         </div>
@@ -762,7 +766,11 @@ export default function App() {
 
       <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-green-800 flex-col p-6 z-50 shadow-2xl border-r border-green-700">
         <div className="flex flex-col items-center mb-10 text-white border-b border-green-700 pb-6">
-          <Crown size={48} className="mb-2 text-yellow-400 drop-shadow-md" />
+          <img 
+  src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
+  className="w-8 h-8 object-contain"
+  alt="Logo"
+/>
           <h1 className="text-center font-black italic text-lg leading-tight tracking-tight">COPA DE LOS <br/><span className="text-red-500 bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES 2026</span></h1>
         </div>
         <nav className="space-y-2 flex-1">
@@ -775,7 +783,11 @@ export default function App() {
         <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v3.9 Táctica</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
-         <div className="flex items-center gap-2 text-white font-black italic"><Crown size={20} className="text-yellow-400"/> COPA REYES</div>
+         <div className="flex items-center gap-2 text-white font-black italic"><img 
+  src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
+  className="w-8 h-8 object-contain"
+  alt="Logo"
+/> COPA REYES</div>
          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">{mobileMenuOpen ? <X /> : <Menu />}</button>
       </div>
       {mobileMenuOpen && (
