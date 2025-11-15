@@ -40,6 +40,7 @@ import {
 
 // --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
 const firebaseConfig = {
+    // Usamos import.meta.env.VITE_... para leer las variables de Vercel/Vite
     apiKey: import.meta.env.VITE_API_KEY,
     authDomain: import.meta.env.VITE_AUTH_DOMAIN,
     projectId: import.meta.env.VITE_PROJECT_ID,
@@ -47,6 +48,12 @@ const firebaseConfig = {
     messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
     appId: import.meta.env.VITE_APP_ID
 };
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+// Usamos el Project ID como App ID
+const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id'; // <--- El App ID se lee del PROJECT_ID
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
