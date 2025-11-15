@@ -1,16 +1,14 @@
-@import url('[https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap)');
+/* 1. Cargar la fuente web PRIMERO */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
 
+/* 2. Cargar las directivas de Tailwind */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* 3. Definir la fuente base para todo el sitio */
 body {
-  /* Establece la fuente Inter por defecto para todo el cuerpo */
   font-family: 'Inter', sans-serif;
-  @apply bg-gray-50 text-gray-800;
-  
-  /* --- REGLA DE PRUEBA CRÍTICA --- */
-  background-color: #ff0000 !important; /* ROJO PURO */
-  /* ------------------------------- */
 }
+
 
