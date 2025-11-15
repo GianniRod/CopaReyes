@@ -199,19 +199,20 @@ export default function App() {
 
   // Auth: Usamos el inicio de sesión anónimo, ya que no tenemos el token
   useEffect(() => {
-    const initAuth = async () => {
-        try {
-            await signInAnonymously(auth);
-        } catch (e) {
-            console.error("Error al iniciar sesión anónima:", e);
-        }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
-    });
-    return () => unsubscribe();
-  }, []);
+  const initAuth = async () => {
+      try {
+          // En Vercel, iniciamos sesión anónima, ya que no tenemos el token personalizado.
+          await signInAnonymously(auth); 
+      } catch (e) {
+          console.error("Error al iniciar sesión anónima:", e);
+      }
+  };
+  initAuth();
+  const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+  });
+  return () => unsubscribe();
+}, []);
 
   // Data Fetching
   useEffect(() => {
