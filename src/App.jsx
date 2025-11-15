@@ -768,7 +768,7 @@ export default function App() {
         <div className="flex flex-col items-center mb-10 text-white border-b border-green-700 pb-6">
           <img 
   src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-  className="w-16 h-16 object-contain"
+  className="w-8 h-8 object-contain"
   alt="Logo"
 />
           <h1 className="text-center font-black italic text-lg leading-tight tracking-tight">COPA DE LOS <br/><span className="text-red-500 bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES 2026</span></h1>
