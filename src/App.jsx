@@ -773,7 +773,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v3.8 Táctica</div>
+        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v3.9 Táctica</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><Crown size={20} className="text-yellow-400"/> COPA REYES</div>
