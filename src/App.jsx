@@ -17,7 +17,7 @@ import {
   onSnapshot, 
   orderBy, 
   serverTimestamp,
-  writeBatch // --- NUEVO --- Importar writeBatch para transacciones
+  writeBatch
 } from 'firebase/firestore';
 import { 
   Trophy, 
@@ -32,14 +32,14 @@ import {
   Timer,
   Flag,
   ShieldAlert,
-  Target, // --- NUEVO ---
+  Target,
   Menu,
   X,
   Shirt,
   AlertTriangle,
-  Repeat, // --- NUEVO ---
-  Check, // --- NUEVO ---
-  XCircle // --- NUEVO ---
+  Repeat,
+  Check,
+  XCircle
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
@@ -77,16 +77,15 @@ const generateRoster = () => {
   }));
 };
 
-// --- NUEVO: Estado inicial para penales ---
 const getInitialPenaltyShootout = () => ({
   scoreA: 0,
   scoreB: 0,
   attemptsA: 0,
   attemptsB: 0,
-  kicker: 'A', // Empieza pateando A
-  log: [], // [{ kicker: 'A', result: 'goal' }, { kicker: 'B', result: 'miss' }, ...]
+  kicker: 'A', 
+  log: [],
   winner: null,
-  isKicking: false // Para deshabilitar botón mientras se procesa
+  isKicking: false
 });
 
 // --- COMPONENTES UI ---
@@ -137,20 +136,19 @@ const Select = ({ label, options, ...props }) => (
   </div>
 );
 
-// --- MODIFICADO: Badge ---
 const Badge = ({ status, period }) => {
   const styles = {
     scheduled: "bg-green-100 text-green-700 border border-green-200",
     live: "bg-red-600 text-white shadow-md shadow-red-200 animate-pulse",
     halftime: "bg-amber-400 text-amber-900 font-bold",
-    penalties: "bg-blue-600 text-white shadow-md shadow-blue-200 animate-pulse", // --- NUEVO ---
+    penalties: "bg-blue-600 text-white shadow-md shadow-blue-200 animate-pulse",
     finished: "bg-green-700 text-white",
   };
   const labels = {
     scheduled: "PROGRAMADO",
     live: period === '1T' ? "EN JUEGO (1T)" : "EN JUEGO (2T)",
     halftime: "MEDIO TIEMPO",
-    penalties: "¡PENALES!", // --- NUEVO ---
+    penalties: "¡PENALES!",
     finished: "FINALIZADO",
   };
   return (
@@ -259,7 +257,6 @@ export default function App() {
         } else if (match.status === 'live' || match.status === 'halftime') {
           simulateStep(match);
         }
-        // --- NUEVO: No simulamos penales con el timer, es manual ---
       });
     }, timeScale); 
     return () => clearInterval(intervalId);
@@ -279,7 +276,6 @@ export default function App() {
       yellowA: 0, yellowB: 0, redA: 0, redB: 0, cornersA: 0, cornersB: 0 
     };
 
-    // --- NUEVO: Añadir evento de inicio de Ida o Vuelta ---
     let startText = '¡RUEDA EL BALÓN! Comienza el partido.';
     if (match.matchType === 'leg1') startText = '¡Comienza el partido de IDA!';
     if (match.matchType === 'leg2') startText = '¡Comienza el partido de VUELTA!';
@@ -436,7 +432,7 @@ export default function App() {
     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', matchId), updateData);
   };
 
-  // --- NUEVO: LÓGICA DE PENALES ---
+  // --- LÓGICA DE PENALES ---
   const handlePenaltyKick = async (match) => {
     if (!user || !match.penaltyShootout || match.penaltyShootout.isKicking || match.penaltyShootout.winner) return;
 
@@ -447,7 +443,7 @@ export default function App() {
     const currentShootout = JSON.parse(JSON.stringify(match.penaltyShootout));
     const newEvents = [...match.events];
     
-    // 1. Marcar como "pateando" para evitar doble click
+    // 1. Marcar como "pateando"
     currentShootout.isKicking = true;
     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), {
       penaltyShootout: currentShootout
@@ -461,11 +457,9 @@ export default function App() {
     const kickerTeam = (kickerSide === 'A') ? teamA : teamB;
     const keeperTeam = (kickerSide === 'A') ? teamB : teamA;
 
-    // Probabilidad base 75%
     let baseProb = 0.75; 
-    // Ajuste por "Fuerza" (max +/- 15%)
-    let kickerAdj = (parseFloat(kickerTeam.probability) - 0.5) * 0.3; // (0.5 * 0.3 = 0.15)
-    let keeperAdj = (parseFloat(keeperTeam.probability) - 0.5) * 0.3; // (0.5 * 0.3 = 0.15)
+    let kickerAdj = (parseFloat(kickerTeam.probability) - 0.5) * 0.3;
+    let keeperAdj = (parseFloat(keeperTeam.probability) - 0.5) * 0.3;
 
     let finalProb = Math.max(0.5, Math.min(0.95, baseProb + kickerAdj - keeperAdj));
     const isGoal = Math.random() < finalProb;
@@ -490,7 +484,9 @@ export default function App() {
     let newStatus = 'penalties';
     const { scoreA, scoreB, attemptsA, attemptsB } = currentShootout;
     
-    if (attemptsA <= 5 || attemptsB <= 5) {
+    // --- MODIFICADO: Lógica de fin de tanda (BUG CORREGIDO) ---
+    // (attemptsA <= 5 || attemptsB <= 5) -> (attemptsA <= 5 && attemptsB <= 5)
+    if (attemptsA <= 5 && attemptsB <= 5) {
       // Ronda regular de 5
       const kicksLeftA = 5 - attemptsA;
       const kicksLeftB = 5 - attemptsB;
@@ -505,14 +501,15 @@ export default function App() {
       // Si attemptsA=5, attemptsB=5 y scoreA=scoreB, sigue a muerte súbita
     } 
     
+    // Muerte súbita (solo se revisa al final de una ronda completa)
     if (attemptsA > 5 && attemptsA === attemptsB) {
-      // Muerte súbita (solo se revisa al final de una ronda completa)
       if (scoreA > scoreB) {
         currentShootout.winner = 'A';
       } else if (scoreB > scoreA) {
         currentShootout.winner = 'B';
       }
     }
+    // --- FIN DE LA CORRECCIÓN ---
 
     if (currentShootout.winner) {
       newStatus = 'finished';
@@ -531,23 +528,32 @@ export default function App() {
 
   // --- COMPONENTES DE VISTA ---
 
-  // --- NUEVO: Componente para Penales ---
   const PenaltyShootoutUI = ({ match, onKick }) => {
     const teamA = teams.find(t => t.id === match.teamAId);
     const teamB = teams.find(t => t.id === match.teamBId);
     const shootout = match.penaltyShootout;
     if (!teamA || !teamB || !shootout) return null;
 
-    const renderIcon = (result) => {
-      if (result === 'goal') return <Check size={18} className="text-green-500" />;
-      if (result === 'miss') return <XCircle size={18} className="text-red-500" />;
-      return <div className="w-4 h-4 rounded-full bg-gray-300"></div>;
+    // --- MODIFICADO: renderIcon ahora es el círculo completo ---
+    const renderIcon = (result, index) => {
+      if (result === 'goal') {
+        return <div key={index} className="w-7 h-7 rounded-full bg-green-500 border-2 border-green-600 flex items-center justify-center shadow-inner">
+          <Check size={18} className="text-white" />
+        </div>;
+      }
+      if (result === 'miss') {
+        return <div key={index} className="w-7 h-7 rounded-full bg-red-500 border-2 border-red-600 flex items-center justify-center shadow-inner">
+          <X size={18} className="text-white" />
+        </div>;
+      }
+      // Pendiente
+      return <div key={index} className="w-7 h-7 rounded-full bg-gray-200 border-2 border-gray-300 shadow-inner"></div>;
     };
     
     const getKicks = (side) => {
         const kicks = shootout.log.filter(k => k.kicker === side).map(k => k.result);
         const totalAttempts = Math.max(5, shootout.attemptsA, shootout.attemptsB);
-        // Rellenar hasta 5 o hasta la ronda actual de muerte súbita
+        // Rellenar hasta 'totalAttempts'
         while(kicks.length < totalAttempts) {
             kicks.push(null);
         }
@@ -567,30 +573,30 @@ export default function App() {
             <Target size={14} className="text-blue-600" /> Tanda de Penales
           </h3>
           
-          {/* Marcador de penales */}
-          <div className="flex justify-center items-center gap-6 mb-6">
+          <div className="flex justify-center items-start gap-6 mb-6">
             {/* Equipo A */}
-            <div className="flex flex-col items-center gap-3">
-              <span className="text-lg font-bold text-gray-700">{teamA.name}</span>
-              <div className="flex gap-2">
-                {kicksA.map((result, i) => <div key={i} className="w-7 h-7 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">{renderIcon(result)}</div>)}
+            <div className="flex flex-col items-center gap-3 flex-1">
+              <span className="text-lg font-bold text-gray-700 text-center">{teamA.name}</span>
+              {/* --- MODIFICADO: Añadido flex-wrap y justify-center --- */}
+              <div className="flex gap-2 flex-wrap justify-center min-h-[36px]">
+                {kicksA.map((result, i) => renderIcon(result, `a-${i}`))}
               </div>
               <div className="text-4xl font-bold text-blue-900">{shootout.scoreA}</div>
             </div>
             
-            <div className="text-2xl text-gray-400 font-bold">vs</div>
+            <div className="text-2xl text-gray-400 font-bold pt-10">vs</div>
 
             {/* Equipo B */}
-            <div className="flex flex-col items-center gap-3">
-              <span className="text-lg font-bold text-gray-700">{teamB.name}</span>
-              <div className="flex gap-2">
-                {kicksB.map((result, i) => <div key={i} className="w-7 h-7 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">{renderIcon(result)}</div>)}
+            <div className="flex flex-col items-center gap-3 flex-1">
+              <span className="text-lg font-bold text-gray-700 text-center">{teamB.name}</span>
+              {/* --- MODIFICADO: Añadido flex-wrap y justify-center --- */}
+              <div className="flex gap-2 flex-wrap justify-center min-h-[36px]">
+                {kicksB.map((result, i) => renderIcon(result, `b-${i}`))}
               </div>
               <div className="text-4xl font-bold text-blue-900">{shootout.scoreB}</div>
             </div>
           </div>
           
-          {/* Botón de patear */}
           <div className="text-center">
             {isFinished ? (
               <p className="text-xl font-bold text-green-600">¡GANADOR: {(shootout.winner === 'A' ? teamA.name : teamB.name).toUpperCase()}!</p>
@@ -639,7 +645,6 @@ export default function App() {
       }, [match.currentMinute]);
 
 
-      // Lógica de visualización de tiempo
       let timeDisplay = "";
       const displayMinute = String(match.currentMinute).padStart(2, '0');
       
@@ -649,7 +654,6 @@ export default function App() {
 
       timeDisplay = `${displayMinute}:${displaySeconds}`;
 
-      // --- MODIFICADO: Lógica de tiempo ---
       if (match.status === 'halftime') {
           const remaining = 15 - (match.halftimeCounter || 0);
           timeDisplay = `MT (${String(remaining).padStart(2, '0')}:00)`;
@@ -661,13 +665,11 @@ export default function App() {
           timeDisplay = `${String(regular).padStart(2, '0')}+${String(added).padStart(2, '0')}`;
       }
 
-      // --- NUEVO: Lógica de Marcador Global ---
       let globalScore = null;
       if (match.matchType === 'leg1' || match.matchType === 'leg2') {
           const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
           const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
           
-          // teamA y teamB del global son los de la IDA
           const globalTeamA = (match.matchType === 'leg1') ? teamA : teams.find(t => t.id === match.teamBId);
           const globalTeamB = (match.matchType === 'leg1') ? teamB : teams.find(t => t.id === match.teamAId);
 
@@ -684,7 +686,6 @@ export default function App() {
       }
       
       const isFinished = match.status === 'finished';
-      // --- MODIFICADO: Opacidad del ganador ---
       let scoreOpacityA = 'opacity-100';
       let scoreOpacityB = 'opacity-100';
       
@@ -715,11 +716,9 @@ export default function App() {
 
       return (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10">
-              {/* Controles de velocidad y volver */}
               <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-lg border border-green-100 shadow-sm">
                 <button onClick={onBack} className="text-green-700 hover:text-green-900 flex items-center gap-2 text-sm font-bold uppercase">← Volver</button>
                 
-                {/* --- MODIFICADO: Ocultar controles en penales --- */}
                 {match.status !== 'penalties' && (
                   <div className="flex gap-1">
                     {[60000, 2000, 1000, 50].map(speed => (
@@ -731,20 +730,16 @@ export default function App() {
                 )}
               </div>
               
-              {/* MARCADOR */}
               <div className="bg-gradient-to-r from-green-800 to-green-700 rounded-t-2xl border-b-4 border-red-600 p-6 md:p-8 text-center relative overflow-hidden shadow-xl">
-                  {/* --- NUEVO: Etiqueta de Ida/Vuelta --- */}
                   {match.matchType === 'leg1' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Ida</div>}
                   {match.matchType === 'leg2' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Vuelta</div>}
 
                   <div className="flex justify-between items-center max-w-4xl mx-auto relative z-10">
-                      {/* EQUIPO A */}
                       <div className="flex flex-col items-center w-1/3">
                            <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg bg-white object-cover" />
                            <h2 className="text-lg md:text-2xl font-bold text-white mt-4 tracking-tight leading-none drop-shadow-md">{teamA?.name}</h2>
                       </div>
                       
-                      {/* RESULTADO CENTRAL */}
                       <div className="flex flex-col items-center w-1/3">
                           <div className="bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/20">
                               {match.status === 'scheduled' ? (
@@ -752,16 +747,17 @@ export default function App() {
                                   VS
                                 </div>
                               ) : (
-                                <div className="text-4xl md:text-6xl font-sans font-bold text-white tracking-tighter flex items-center gap-2 drop-shadow-lg">
+                                // --- MODIFICADO: Añadido justify-center ---
+                                <div className="text-4xl md:text-6xl font-sans font-bold text-white tracking-tighter flex items-center justify-center gap-2 drop-shadow-lg">
                                   <span className={`transition-opacity duration-500 ${scoreOpacityA}`}>{match.scoreA}</span>
                                   <span className="text-white/50 text-3xl">-</span>
                                   <span className={`transition-opacity duration-500 ${scoreOpacityB}`}>{match.scoreB}</span>
                                 </div>
                               )}
                           </div>
-                          {/* --- NUEVO: Marcador Global --- */}
                           {globalScore && (
-                              <div className="mt-2 text-yellow-300 font-bold text-sm bg-black/20 px-2 py-0.5 rounded">
+                              // --- MODIFICADO: Añadido whitespace-nowrap ---
+                              <div className="mt-2 text-yellow-300 font-bold text-sm bg-black/20 px-2 py-0.5 rounded whitespace-nowrap">
                                   {globalScore.label}
                               </div>
                           )}
@@ -775,7 +771,6 @@ export default function App() {
                           </div>
                       </div>
 
-                      {/* EQUIPO B */}
                       <div className="flex flex-col items-center w-1/3">
                            <img src={teamB?.logo || `https://ui-avatars.com/api/?name=${teamB?.name}`} className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg bg-white object-cover" />
                            <h2 className="text-lg md:text-2xl font-bold text-white mt-4 tracking-tight leading-none drop-shadow-md">{teamB?.name}</h2>
@@ -783,14 +778,11 @@ export default function App() {
                   </div>
               </div>
 
-              {/* GRID PRINCIPAL: ESTADÍSTICAS Y EVENTOS */}
-              {/* --- MODIFICADO: Ocultar stats si hay penales --- */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
                   {match.status === 'penalties' ? (
                     <PenaltyShootoutUI match={match} onKick={() => handlePenaltyKick(match)} />
                   ) : (
                     <>
-                      {/* LEFT: STATS (4 cols) */}
                       <div className="lg:col-span-4 space-y-4">
                           <div className="bg-white border border-green-100 rounded-xl p-6 shadow-sm">
                               <h3 className="text-green-800 uppercase text-xs font-bold mb-6 flex items-center gap-2 border-b border-green-100 pb-2">
@@ -819,7 +811,6 @@ export default function App() {
                               </div>
                           </div>
                           
-                          {/* Controles Manuales */}
                           <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
                               {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
                               {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
@@ -830,7 +821,6 @@ export default function App() {
                           </div>
                       </div>
                       
-                      {/* RIGHT: EVENTOS (8 cols) */}
                       <div className="lg:col-span-8 bg-white border border-green-100 rounded-xl overflow-hidden flex flex-col h-[600px] shadow-sm">
                           <div className="bg-green-50 p-3 border-b border-green-100"><h3 className="text-green-800 font-bold text-xs uppercase flex items-center gap-2"><Timer size={14} /> Minuto a Minuto</h3></div>
                           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
@@ -856,27 +846,23 @@ export default function App() {
       const teamADisplay = teamA?.shortName || teamA?.name.substring(0, 5) || 'LOC';
       const teamBDisplay = teamB?.shortName || teamB?.name.substring(0, 5) || 'VIS';
 
-      // --- MODIFICADO: Lógica de ganador para opacidad ---
       let scoreOpacityA = 'opacity-100';
       let scoreOpacityB = 'opacity-100';
 
       if (match.status === 'finished') {
           let winner = null;
-          // 1. Revisar penales
           if (match.penaltyShootout && match.penaltyShootout.winner) {
               winner = match.penaltyShootout.winner;
           } 
-          // 2. Revisar Global (solo si es leg2)
           else if (match.matchType === 'leg2') {
               const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
               if(leg1) {
                   const aggA = leg1.scoreA + match.scoreB;
                   const aggB = leg1.scoreB + match.scoreA;
-                  if (aggA > aggB) winner = 'B'; // Ganó el Global A (que es el TeamB de este partido)
-                  if (aggB > aggA) winner = 'A'; // Ganó el Global B (que es el TeamA de este partido)
+                  if (aggA > aggB) winner = 'B'; 
+                  if (aggB > aggA) winner = 'A';
               }
           }
-          // 3. Revisar Partido Único o Ida
           else if (match.matchType === 'single' || match.matchType === 'leg1') {
               if (match.scoreA > match.scoreB) winner = 'A';
               if (match.scoreB > match.scoreA) winner = 'B';
@@ -886,7 +872,6 @@ export default function App() {
           if (winner === 'A') scoreOpacityB = 'opacity-50';
       }
 
-      // --- MODIFICADO: Lógica de tiempo ---
       let timeLabel = "";
       if (match.status === 'scheduled') {
           timeLabel = new Date(match.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
@@ -904,7 +889,6 @@ export default function App() {
           }
       }
       
-      // --- NUEVO: Etiqueta de Global ---
       let globalLabel = null;
       if (match.matchType === 'leg1' || match.matchType === 'leg2') {
           const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
@@ -933,13 +917,13 @@ export default function App() {
                   <span className="text-xs text-gray-500 font-mono">{timeLabel}</span>
               </div>
 
-              {/* --- NUEVO: Mostrar tipo de partido y global --- */}
               <div className="flex justify-between items-center mb-4 pl-2 text-xs text-blue-700 font-bold">
                  <span>
                     {match.matchType === 'leg1' && 'IDA'}
                     {match.matchType === 'leg2' && 'VUELTA'}
                  </span>
-                 <span>
+                 {/* --- MODIFICADO: Añadido whitespace-nowrap --- */}
+                 <span className="whitespace-nowrap">
                     {globalLabel}
                  </span>
               </div>
@@ -972,7 +956,6 @@ export default function App() {
   };
 
   const DashboardView = () => {
-    // --- MODIFICADO: Incluir penales en "En Juego" ---
     const liveMatches = matches.filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'penalties');
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
@@ -1061,13 +1044,12 @@ export default function App() {
 
   const MatchesView = () => {
     const [isScheduling, setIsScheduling] = useState(false);
-    // --- MODIFICADO: Estado del formulario ---
     const [formData, setFormData] = useState({ 
         teamAId: '', 
         teamBId: '', 
         startTime: '', 
-        startTimeLeg2: '', // --- NUEVO ---
-        matchType: 'single', // --- NUEVO ---
+        startTimeLeg2: '',
+        matchType: 'single',
         autoStart: true 
     });
     
@@ -1083,7 +1065,6 @@ export default function App() {
         };
 
         if (formData.matchType === 'single') {
-            // --- PARTIDO ÚNICO ---
             if (!formData.teamAId || !formData.teamBId || !formData.startTime) return;
             await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), { 
                 ...baseData, 
@@ -1094,16 +1075,12 @@ export default function App() {
                 seriesId: null
             });
         } else {
-            // --- IDA Y VUELTA ---
             if (!formData.teamAId || !formData.teamBId || !formData.startTime || !formData.startTimeLeg2) return;
             
             const seriesId = `series-${crypto.randomUUID()}`;
-            
-            // Usar un batch para asegurar que se creen ambos partidos
             const batch = writeBatch(db);
             const matchesCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'matches');
 
-            // Partido 1 (IDA)
             const leg1Ref = doc(matchesCollection);
             batch.set(leg1Ref, {
                 ...baseData,
@@ -1114,12 +1091,11 @@ export default function App() {
                 seriesId: seriesId
             });
             
-            // Partido 2 (VUELTA) - Equipos invertidos
             const leg2Ref = doc(matchesCollection);
             batch.set(leg2Ref, {
                 ...baseData,
-                teamAId: formData.teamBId, // Visita es local
-                teamBId: formData.teamAId, // Local es visita
+                teamAId: formData.teamBId,
+                teamBId: formData.teamAId,
                 startTime: formData.startTimeLeg2,
                 matchType: 'leg2',
                 seriesId: seriesId
@@ -1129,7 +1105,6 @@ export default function App() {
         }
 
         setIsScheduling(false); 
-        // Resetear form
         setFormData({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
     };
 
@@ -1137,7 +1112,6 @@ export default function App() {
       <div>
          <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-green-900">Calendario</h2><Button onClick={() => setIsScheduling(!isScheduling)}>{isScheduling ? 'Cancelar' : <><Calendar size={16} /> Programar</>}</Button></div>
          
-         {/* --- MODIFICADO: Formulario de Programación --- */}
          {isScheduling && <Card className="p-6 mb-6 shadow-lg animate-in slide-in-from-top-2">
             <form onSubmit={handleSchedule} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
@@ -1229,7 +1203,7 @@ export default function App() {
       <ConfirmModal 
         isOpen={!!deleteMatchId} 
         title="¿Borrar Partido?" 
-        message="El partido será eliminado del historial permanentemente. Si es parte de una serie de Ida/Vuelta, el otro partido NO será borrado." // --- MODIFICADO ---
+        message="El partido será eliminado del historial permanentemente. Si es parte de una serie de Ida/Vuelta, el otro partido NO será borrado."
         onClose={() => setDeleteMatchId(null)}
         onConfirm={async () => {
             if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', deleteMatchId));
@@ -1252,7 +1226,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v4.0 Penales</div>
+        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v4.1 Corrección</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><img 
@@ -1278,4 +1252,5 @@ export default function App() {
     </div>
   );
 }
+
 
