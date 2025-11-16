@@ -1681,7 +1681,7 @@ export default function App() {
               src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
               className="w-10 h-10 object-contain"
               alt="Logo"
-            /> <span className="text-lg">COPA REYES</span></div>
+            /> <span className="text-3xl">COPA REYES</span></div>
          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">{mobileMenuOpen ? <X /> : <Menu />}</button>
       </div>
       {mobileMenuOpen && (
