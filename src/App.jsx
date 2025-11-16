@@ -18,8 +18,8 @@ import {
   orderBy, 
   serverTimestamp,
   writeBatch,
-  arrayUnion, // --- NUEVO ---
-  arrayRemove // --- NUEVO ---
+  arrayUnion, 
+  arrayRemove 
 } from 'firebase/firestore';
 import { 
   Trophy, 
@@ -42,11 +42,13 @@ import {
   Repeat,
   Check,
   XCircle,
-  Shield, // --- NUEVO ---
-  UsersRound, // --- NUEVO ---
-  CheckSquare, // --- NUEVO ---
-  Trello, // --- NUEVO ---
-  ArrowLeft // --- NUEVO ---
+  Shield, 
+  UsersRound, 
+  CheckSquare, 
+  Trello, 
+  ArrowLeft,
+  Edit, // --- NUEVO ---
+  Eye // --- NUEVO ---
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
@@ -242,6 +244,29 @@ const Badge = ({ status, period }) => {
   );
 };
 
+// --- NUEVO: Componente Toggle Switch ---
+const ToggleSwitch = ({ isEnabled, onToggle, labelLeft, labelRight, IconLeft, IconRight }) => (
+  <div className="flex items-center gap-2">
+    <span className={`font-bold text-xs uppercase ${!isEnabled ? 'text-red-600' : 'text-gray-400'}`}>
+        {IconLeft && <IconLeft size={16} className="inline-block mr-1" />}
+        {labelLeft}
+    </span>
+    <button
+      onClick={onToggle}
+      className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-green-600' : 'bg-gray-300'}`}
+    >
+      <span
+        className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+      />
+    </button>
+    <span className={`font-bold text-xs uppercase ${isEnabled ? 'text-green-700' : 'text-gray-400'}`}>
+        {IconRight && <IconRight size={16} className="inline-block mr-1" />}
+        {labelRight}
+    </span>
+  </div>
+);
+
+
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => {
   if (!isOpen) return null;
   return (
@@ -286,14 +311,14 @@ export default function App() {
   const [view, setView] = useState('dashboard'); 
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
-  const [tournaments, setTournaments] = useState([]); // --- NUEVO ---
+  const [tournaments, setTournaments] = useState([]); 
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [timeScale, setTimeScale] = useState(60000); // Default x1
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   const [deleteTeamId, setDeleteTeamId] = useState(null);
   const [deleteMatchId, setDeleteMatchId] = useState(null);
-  const [deleteTournamentId, setDeleteTournamentId] = useState(null); // --- NUEVO ---
+  const [deleteTournamentId, setDeleteTournamentId] = useState(null); 
 
   // Auth
   useEffect(() => {
@@ -317,7 +342,7 @@ export default function App() {
     
     const userTeamsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'teams');
     const userMatchesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'matches');
-    const userTournamentsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'tournaments'); // --- NUEVO ---
+    const userTournamentsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'tournaments'); 
 
     const unsubTeams = onSnapshot(
         query(userTeamsPath, orderBy('name')), 
@@ -331,14 +356,13 @@ export default function App() {
         (err) => console.error("Error fetching matches:", err)
     );
 
-    // --- NUEVO: Listener de Torneos ---
     const unsubTournaments = onSnapshot(
         query(userTournamentsPath, orderBy('createdAt', 'desc')),
         (snap) => setTournaments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
         (err) => console.error("Error fetching tournaments:", err)
     );
 
-    return () => { unsubTeams(); unsubMatches(); unsubTournaments(); }; // --- MODIFICADO ---
+    return () => { unsubTeams(); unsubMatches(); unsubTournaments(); }; 
   }, [user]); 
 
   // Game Loop
@@ -373,7 +397,7 @@ export default function App() {
     let startText = '¡RUEDA EL BALÓN! Comienza el partido.';
     if (match.matchType === 'leg1') startText = '¡Comienza el partido de IDA!';
     if (match.matchType === 'leg2') startText = '¡Comienza el partido de VUELTA!';
-    if (match.groupId) startText = `¡Comienza el partido del Grupo!`; // --- NUEVO ---
+    if (match.groupId) startText = `¡Comienza el partido del ${match.groupName || 'Grupo'}!`; // --- MODIFICADO ---
 
     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), {
       status: 'live', period: '1T', currentMinute: 0, addedTime: Math.floor(Math.random()*4)+1, halftimeCounter: 0, scoreA: 0, scoreB: 0,
@@ -416,8 +440,8 @@ export default function App() {
         updates.events = newEvents;
         
         // --- MODIFICADO: Añadir lógica para partidos de torneo ---
-        // Los partidos de grupo NUNCA van a penales
-        if (match.groupId) {
+        // Los partidos de grupo (matchType 'group') NUNCA van a penales
+        if (match.matchType === 'group') {
             updates.status = 'finished';
         }
         else if (match.matchType === 'single') {
@@ -741,6 +765,17 @@ export default function App() {
           if (winner === 'B') scoreOpacityA = 'opacity-50';
           if (winner === 'A') scoreOpacityB = 'opacity-50';
       }
+      
+      // --- NUEVO: Lógica para etiqueta de Torneo ---
+      let tournamentLabel = null;
+      if (match.tournamentId) {
+          if (match.groupName) {
+              tournamentLabel = `${match.groupName}${match.jornada ? `, J${match.jornada}` : ''}`;
+          } else {
+              tournamentLabel = "Fase Eliminatoria"; // O buscar el nombre de la ronda si estuviera guardado
+          }
+      }
+      
       return (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10">
               <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-lg border border-green-100 shadow-sm">
@@ -758,7 +793,9 @@ export default function App() {
               <div className="bg-gradient-to-r from-green-800 to-green-700 rounded-t-2xl border-b-4 border-red-600 p-6 md:p-8 text-center relative overflow-hidden shadow-xl">
                   {match.matchType === 'leg1' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Ida</div>}
                   {match.matchType === 'leg2' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Vuelta</div>}
-                  {match.groupId && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Fase de Grupos</div>}
+                  {/* --- MODIFICADO: Mostrar etiqueta de torneo --- */}
+                  {tournamentLabel && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">{tournamentLabel}</div>}
+                  
                   <div className="flex justify-between items-center max-w-4xl mx-auto relative z-10">
                       <div className="flex flex-col items-center w-1/3">
                            <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg bg-white object-cover" />
@@ -874,7 +911,7 @@ export default function App() {
                   if (aggB > aggA) winner = 'A';
               }
           }
-          else if (match.matchType === 'single' || match.matchType === 'leg1') {
+          else if (match.matchType === 'single' || match.matchType === 'group') { // --- MODIFICADO ---
               if (match.scoreA > match.scoreB) winner = 'A';
               if (match.scoreB > match.scoreA) winner = 'B';
           }
@@ -910,6 +947,17 @@ export default function App() {
              globalLabel = `Global: ${displayAggA}-${displayAggB}`;
           }
       }
+      
+      // --- NUEVO: Etiqueta de Torneo ---
+      let tournamentLabel = null;
+      if (match.tournamentId) {
+          if (match.groupName) {
+              tournamentLabel = `${match.groupName}${match.jornada ? `, J${match.jornada}` : ''}`;
+          } else if (match.matchType !== 'group') {
+              tournamentLabel = "Eliminatoria"; // Etiqueta genérica para KO
+          }
+      }
+
       return (
           <div onClick={onClick} className="p-4 hover:bg-green-50 transition-all cursor-pointer group relative overflow-hidden rounded-xl">
               {(match.status === 'live' || match.status === 'penalties') && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-red-500' : 'bg-blue-500'}`}></div>}
@@ -922,13 +970,14 @@ export default function App() {
                   <span className="text-xs text-gray-500 font-mono">{timeLabel}</span>
               </div>
               {/* --- MODIFICADO: Color de Texto y Lógica de Torneo --- */}
-              <div className="flex justify-between items-center mb-4 pl-2 text-xs text-green-800 font-bold">
-                 <span>
+              <div className="flex justify-between items-center mb-4 pl-2 text-xs text-green-800 font-bold h-4">
+                 <span className="truncate">
                     {match.matchType === 'leg1' && 'IDA'}
                     {match.matchType === 'leg2' && 'VUELTA'}
-                    {match.groupId && 'GRUPO'}
+                    {/* --- NUEVO: Mostrar info de torneo --- */}
+                    {tournamentLabel}
                  </span>
-                 <span className="whitespace-nowrap">
+                 <span className="whitespace-nowrap flex-shrink-0">
                     {globalLabel}
                  </span>
               </div>
@@ -1033,13 +1082,14 @@ export default function App() {
   };
 
   const MatchCardWrapper = ({ match, allMatches, onClick, onDelete }) => {
-    if (match.matchType === 'single') {
-      return (
-        <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
-          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
-        </div>
-      );
+    // --- MODIFICADO: Simplificado ---
+    // Si es 'leg1', se renderizará una card doble.
+    // Si es 'leg2', se omitirá (ya se renderizó con 'leg1').
+    // Si es 'single' o 'group', se renderizará una card simple.
+    if (match.matchType === 'leg2') {
+        return null; // Ya se maneja junto con leg1
     }
+
     if (match.matchType === 'leg1') {
       const leg2 = allMatches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
       return (
@@ -1049,7 +1099,13 @@ export default function App() {
         </div>
       );
     }
-    return null;
+    
+    // Default: 'single', 'group', o cualquier otro tipo
+    return (
+      <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
+        <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
+      </div>
+    );
   };
 
   const MatchesView = () => {
@@ -1058,7 +1114,7 @@ export default function App() {
     const handleSchedule = async (e) => { 
         e.preventDefault(); 
         if (!user) return;
-        const baseData = { status: 'scheduled', scoreA: 0, scoreB: 0, currentMinute: 0, events: [], period: '1T', addedTime: 0, halftimeCounter: 0, createdAt: serverTimestamp(), autoStart: formData.autoStart, tournamentId: null, groupId: null, seriesId: null, matchType: 'single' };
+        const baseData = { status: 'scheduled', scoreA: 0, scoreB: 0, currentMinute: 0, events: [], period: '1T', addedTime: 0, halftimeCounter: 0, createdAt: serverTimestamp(), autoStart: formData.autoStart, tournamentId: null, groupId: null, groupName: null, jornada: null, seriesId: null, matchType: 'single' };
         if (formData.matchType === 'single') {
             if (!formData.teamAId || !formData.teamBId || !formData.startTime) return;
             await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime });
@@ -1077,9 +1133,8 @@ export default function App() {
         setFormData({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
     };
     
-    // --- MODIFICADO: Filtrar partidos de torneo ---
-    // No mostramos partidos de grupos/eliminatoria en esta vista general
-    const matchesToDisplay = matches.filter(m => !m.tournamentId && m.matchType !== 'leg2');
+    // --- MODIFICADO: Mostrar partidos de torneo (filtrar solo leg2) ---
+    const matchesToDisplay = matches.filter(m => m.matchType !== 'leg2');
 
     return (
       <div>
@@ -1189,9 +1244,12 @@ export default function App() {
   // --- NUEVO: Vista de Detalle de Torneo (Componente interno) ---
   const TournamentDetailView = ({ tournament, onBack, user, allTeams, allMatches, onDeleteTournament }) => {
     const [view, setView] = useState('groups'); // 'groups' or 'knockout'
+    const [isEditMode, setIsEditMode] = useState(true); // --- NUEVO: Modo Edición ---
+    
     const [groupForm, setGroupForm] = useState({ name: '', classifiedSlots: 2 });
     const [teamToAdd, setTeamToAdd] = useState({ groupId: null, teamId: '' });
-    const [matchForm, setMatchForm] = useState({ groupId: null, teamAId: '', teamBId: '', startTime: '' });
+    // --- MODIFICADO: Añadir jornada al form ---
+    const [matchForm, setMatchForm] = useState({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
     const [knockoutSetup, setKnockoutSetup] = useState(tournament.knockout ? tournament.knockout.type : 8);
 
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', tournament.id);
@@ -1240,6 +1298,9 @@ export default function App() {
             return;
         }
         
+        // --- NUEVO: Obtener nombre del grupo ---
+        const group = tournament.groups.find(g => g.id === matchForm.groupId);
+
         // Crear el partido en la colección 'matches'
         await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), {
             teamAId: matchForm.teamAId,
@@ -1254,11 +1315,14 @@ export default function App() {
             // --- Datos del Torneo ---
             tournamentId: tournament.id,
             groupId: matchForm.groupId,
+            groupName: group ? group.name : null, // --- NUEVO ---
+            jornada: matchForm.jornada || null, // --- NUEVO ---
             seriesId: null,
-            matchType: 'group', // Nuevo tipo
+            matchType: 'group', 
         });
         
-        setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '' });
+        // --- MODIFICADO: Resetear jornada ---
+        setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
     };
 
     const handleSetupKnockout = async () => {
@@ -1276,8 +1340,28 @@ export default function App() {
         };
         await updateDoc(docRef, { knockout: newKnockout });
     };
+    
+    // --- NUEVO: Actualizar enfrentamiento de eliminatoria ---
+    const handleUpdateKnockoutMatch = async (koMatchId, teamSide, teamId) => {
+        if (!tournament.knockout) return;
+        
+        const newMatches = tournament.knockout.matches.map(m => {
+            if (m.id === koMatchId) {
+                return { ...m, [teamSide]: teamId || null }; // Poner null si se selecciona 'A definir'
+            }
+            return m;
+        });
+        
+        const newKnockout = { ...tournament.knockout, matches: newMatches };
+        
+        await updateDoc(docRef, { knockout: newKnockout });
+    };
 
     const tournamentMatches = allMatches.filter(m => m.tournamentId === tournament.id);
+    const teamOptions = [
+        { value: '', label: 'A definir...' },
+        ...allTeams.map(t => ({ value: t.id, label: t.name }))
+    ];
 
     return (
         <div className="animate-in fade-in duration-300">
@@ -1286,10 +1370,24 @@ export default function App() {
                 <Button variant="secondary" onClick={onBack}>
                     <ArrowLeft size={16} /> Volver a Torneos
                 </Button>
-                <h2 className="text-2xl font-bold text-green-900">{tournament.name}</h2>
-                <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
-                    <Trash2 size={16} /> Borrar Torneo
-                </Button>
+                
+                {/* --- NUEVO: Toggle Edición/Visual --- */}
+                <ToggleSwitch 
+                    isEnabled={isEditMode}
+                    onToggle={() => setIsEditMode(!isEditMode)}
+                    labelLeft="Visual"
+                    labelRight="Edición"
+                    IconLeft={Eye}
+                    IconRight={Edit}
+                />
+                
+                <h2 className="text-2xl font-bold text-green-900 hidden md:block">{tournament.name}</h2>
+                
+                {isEditMode && (
+                    <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
+                        <Trash2 size={16} /> Borrar Torneo
+                    </Button>
+                )}
             </div>
             
             {/* Tabs */}
@@ -1305,30 +1403,32 @@ export default function App() {
             {/* --- VISTA DE GRUPOS --- */}
             {view === 'groups' && (
                 <div className="space-y-8">
-                    {/* Formulario Añadir Grupo */}
-                    <Card className="p-4 bg-gray-50">
-                        <h3 className="font-bold text-green-800 mb-2">Añadir Nuevo Grupo</h3>
-                        <div className="flex flex-col md:flex-row gap-4 items-end">
-                            <div className="flex-1">
-                                <label className="text-[10px] font-bold text-green-600">Nombre del Grupo</label>
-                                <SmallInput 
-                                    placeholder="Ej: Grupo A" 
-                                    value={groupForm.name}
-                                    onChange={e => setGroupForm({...groupForm, name: e.target.value})}
-                                />
+                    {/* Formulario Añadir Grupo (Solo Modo Edición) */}
+                    {isEditMode && (
+                        <Card className="p-4 bg-gray-50">
+                            <h3 className="font-bold text-green-800 mb-2">Añadir Nuevo Grupo</h3>
+                            <div className="flex flex-col md:flex-row gap-4 items-end">
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-green-600">Nombre del Grupo</label>
+                                    <SmallInput 
+                                        placeholder="Ej: Grupo A" 
+                                        value={groupForm.name}
+                                        onChange={e => setGroupForm({...groupForm, name: e.target.value})}
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-green-600">Cupos Clasificación</label>
+                                    <SmallInput 
+                                        type="number" 
+                                        min="1" max="4" 
+                                        value={groupForm.classifiedSlots}
+                                        onChange={e => setGroupForm({...groupForm, classifiedSlots: e.target.value})}
+                                    />
+                                </div>
+                                <Button onClick={handleAddGroup} className="w-full md:w-auto"><Plus size={16} />Añadir</Button>
                             </div>
-                            <div className="flex-1">
-                                <label className="text-[10px] font-bold text-green-600">Cupos Clasificación</label>
-                                <SmallInput 
-                                    type="number" 
-                                    min="1" max="4" 
-                                    value={groupForm.classifiedSlots}
-                                    onChange={e => setGroupForm({...groupForm, classifiedSlots: e.target.value})}
-                                />
-                            </div>
-                            <Button onClick={handleAddGroup} className="w-full md:w-auto"><Plus size={16} />Añadir</Button>
-                        </div>
-                    </Card>
+                        </Card>
+                    )}
                     
                     {/* Lista de Grupos */}
                     {tournament.groups.map(group => {
@@ -1368,7 +1468,10 @@ export default function App() {
                                                             <td className="px-2 py-2 whitespace-nowrap font-medium text-green-900 flex items-center gap-2">
                                                                 <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-5 h-5 rounded-full object-cover" />
                                                                 {t.name}
-                                                                <Trash2 size={14} className="text-gray-400 hover:text-red-600 cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
+                                                                {/* --- MODIFICADO: Ocultar en modo visual --- */}
+                                                                {isEditMode && (
+                                                                    <Trash2 size={14} className="text-gray-400 hover:text-red-600 cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
+                                                                )}
                                                             </td>
                                                             <td className="px-2 py-2 whitespace-nowrap text-center">{t.P}</td>
                                                             <td className="px-2 py-2 whitespace-nowrap text-center">{t.W}</td>
@@ -1382,36 +1485,46 @@ export default function App() {
                                             </table>
                                         </div>
 
-                                        {/* Añadir Equipo */}
-                                        <div className="flex gap-2 mt-4">
-                                            <SmallSelect
-                                                options={[{ value: '', label: 'Añadir equipo al grupo...' }, ...availableTeams.map(t => ({ value: t.id, label: t.name }))]}
-                                                value={teamToAdd.groupId === group.id ? teamToAdd.teamId : ''}
-                                                onChange={e => setTeamToAdd({ groupId: group.id, teamId: e.target.value })}
-                                            />
-                                            <Button variant="secondary" onClick={() => handleAddTeamToGroup(group.id)}><UsersRound size={16} /></Button>
-                                        </div>
+                                        {/* Añadir Equipo (Solo Modo Edición) */}
+                                        {isEditMode && (
+                                            <div className="flex gap-2 mt-4">
+                                                <SmallSelect
+                                                    options={[{ value: '', label: 'Añadir equipo al grupo...' }, ...availableTeams.map(t => ({ value: t.id, label: t.name }))]}
+                                                    value={teamToAdd.groupId === group.id ? teamToAdd.teamId : ''}
+                                                    onChange={e => setTeamToAdd({ groupId: group.id, teamId: e.target.value })}
+                                                />
+                                                <Button variant="secondary" onClick={() => handleAddTeamToGroup(group.id)}><UsersRound size={16} /></Button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Derecha: Partidos */}
-                                    <div className="border-l border-green-100 pl-8">
-                                        <h4 className="font-bold text-green-800 mb-3">Programar Partido</h4>
-                                        <div className="space-y-2 p-3 bg-green-50 rounded-lg">
-                                            <SmallSelect options={[{ value: '', label: 'Local...' }, ...teamsInGroup.map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamAId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamAId: e.target.value})} />
-                                            <SmallSelect options={[{ value: '', label: 'Visitante...' }, ...teamsInGroup.filter(t => t.id !== matchForm.teamAId).map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamBId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamBId: e.target.value})} />
-                                            <SmallInput type="datetime-local" value={matchForm.groupId === group.id ? matchForm.startTime : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, startTime: e.target.value})} />
-                                            <Button onClick={handleScheduleMatch} className="w-full" disabled={matchForm.groupId !== group.id}><Calendar size={16}/> Programar</Button>
-                                        </div>
+                                    <div className={isEditMode ? "border-l border-green-100 pl-8" : ""}>
+                                        {/* Formulario Programar Partido (Solo Modo Edición) */}
+                                        {isEditMode && (
+                                            <>
+                                                <h4 className="font-bold text-green-800 mb-3">Programar Partido</h4>
+                                                <div className="space-y-2 p-3 bg-green-50 rounded-lg">
+                                                    <SmallSelect options={[{ value: '', label: 'Local...' }, ...teamsInGroup.map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamAId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamAId: e.target.value, teamBId: e.target.value === matchForm.teamBId ? '' : matchForm.teamBId})} />
+                                                    <SmallSelect options={[{ value: '', label: 'Visitante...' }, ...teamsInGroup.filter(t => t.id !== matchForm.teamAId).map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamBId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamBId: e.target.value})} />
+                                                    <SmallInput type="datetime-local" value={matchForm.groupId === group.id ? matchForm.startTime : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, startTime: e.target.value})} />
+                                                    {/* --- NUEVO: Input Jornada --- */}
+                                                    <SmallInput type="number" min="1" placeholder="Jornada #" value={matchForm.groupId === group.id ? matchForm.jornada : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, jornada: e.target.value})} />
+                                                    <Button onClick={handleScheduleMatch} className="w-full" disabled={matchForm.groupId !== group.id}><Calendar size={16}/> Programar</Button>
+                                                </div>
+                                            </>
+                                        )}
                                         
                                         <h4 className="font-bold text-green-800 mt-6 mb-3">Partidos del Grupo</h4>
-                                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        <div className={`space-y-2 ${isEditMode ? 'max-h-48 overflow-y-auto' : ''}`}>
                                             {groupMatches.length === 0 && <p className="text-xs text-gray-500">No hay partidos programados para este grupo.</p>}
                                             {groupMatches.map(m => {
                                                 const tA = allTeams.find(t => t.id === m.teamAId);
                                                 const tB = allTeams.find(t => t.id === m.teamBId);
                                                 return (
                                                     <div key={m.id} className="text-sm p-2 bg-white border border-gray-100 rounded flex justify-between items-center">
-                                                        <div>
+                                                        <div className="flex items-center gap-2">
+                                                            {m.jornada && <span className="text-xs font-bold text-gray-400">J{m.jornada}</span>}
                                                             <span className="font-bold">{tA?.shortName || '?'}</span> {m.scoreA} - {m.scoreB} <span className="font-bold">{tB?.shortName || '?'}</span>
                                                         </div>
                                                         <Badge status={m.status} period={m.period} />
@@ -1430,24 +1543,27 @@ export default function App() {
             {/* --- VISTA DE ELIMINATORIA --- */}
             {view === 'knockout' && (
                 <div className="space-y-6">
-                    <Card className="p-6">
-                        <h3 className="font-bold text-green-800 mb-3">Configurar Eliminatoria</h3>
-                        <div className="flex gap-4 items-end">
-                            <div className="flex-1">
-                                <label className="text-[10px] font-bold text-green-600">Equipos en Fase Final</label>
-                                <SmallSelect 
-                                    options={[
-                                        {value: 4, label: '4 Equipos (Semifinal)'},
-                                        {value: 8, label: '8 Equipos (Cuartos de Final)'},
-                                        {value: 16, label: '16 Equipos (Octavos de Final)'},
-                                    ]}
-                                    value={knockoutSetup}
-                                    onChange={e => setKnockoutSetup(e.target.value)}
-                                />
+                    {/* Formulario Configurar (Solo Modo Edición) */}
+                    {isEditMode && (
+                        <Card className="p-6">
+                            <h3 className="font-bold text-green-800 mb-3">Configurar Eliminatoria</h3>
+                            <div className="flex gap-4 items-end">
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-green-600">Equipos en Fase Final</label>
+                                    <SmallSelect 
+                                        options={[
+                                            {value: 4, label: '4 Equipos (Semifinal)'},
+                                            {value: 8, label: '8 Equipos (Cuartos de Final)'},
+                                            {value: 16, label: '16 Equipos (Octavos de Final)'},
+                                        ]}
+                                        value={knockoutSetup}
+                                        onChange={e => setKnockoutSetup(e.target.value)}
+                                    />
+                                </div>
+                                <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
                             </div>
-                            <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
-                        </div>
-                    </Card>
+                        </Card>
+                    )}
 
                     {tournament.knockout && (
                         <Card className="p-6">
@@ -1456,11 +1572,32 @@ export default function App() {
                                 {tournament.knockout.matches.map(koMatch => (
                                     <div key={koMatch.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                                         <div className="font-bold text-sm text-green-800 mb-2">{koMatch.name}</div>
-                                        <div className="flex items-center justify-between p-2 bg-white rounded">
-                                            <span>{koMatch.teamA ? (allTeams.find(t => t.id === koMatch.teamA)?.name || 'Equipo A') : 'A definir'}</span>
-                                            <span className="font-bold">vs</span>
-                                            <span>{koMatch.teamB ? (allTeams.find(t => t.id === koMatch.teamB)?.name || 'Equipo B') : 'A definir'}</span>
-                                        </div>
+                                        
+                                        {/* --- MODIFICADO: Renderizado Condicional Edición/Visual --- */}
+                                        {isEditMode ? (
+                                            <div className="space-y-2">
+                                                <SmallSelect 
+                                                    options={teamOptions} 
+                                                    value={koMatch.teamA || ''}
+                                                    onChange={(e) => handleUpdateKnockoutMatch(koMatch.id, 'teamA', e.target.value)}
+                                                />
+                                                <SmallSelect 
+                                                    options={teamOptions}
+                                                    value={koMatch.teamB || ''}
+                                                    onChange={(e) => handleUpdateKnockoutMatch(koMatch.id, 'teamB', e.target.value)}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between p-2 bg-white rounded text-sm">
+                                                <span className={!koMatch.teamA ? 'text-gray-400' : 'font-medium'}>
+                                                    {koMatch.teamA ? (allTeams.find(t => t.id === koMatch.teamA)?.name || 'Equipo A') : 'A definir'}
+                                                </span>
+                                                <span className="font-bold text-gray-400 text-xs">vs</span>
+                                                <span className={!koMatch.teamB ? 'text-gray-400' : 'font-medium'}>
+                                                    {koMatch.teamB ? (allTeams.find(t => t.id === koMatch.teamB)?.name || 'Equipo B') : 'A definir'}
+                                                </span>
+                                            </div>
+                                        )}
                                         {/* Aquí se podría añadir lógica para vincular partidos */}
                                     </div>
                                 ))}
@@ -1485,7 +1622,7 @@ export default function App() {
   // --- MODIFICADO: Menú y Renderizado Principal ---
   const navItems = [
     { id: 'dashboard', icon: Activity, label: 'Inicio' },
-    { id: 'tournaments', icon: Shield, label: 'Torneos' }, // --- NUEVO ---
+    { id: 'tournaments', icon: Shield, label: 'Torneos' }, 
     { id: 'teams', icon: Users, label: 'Clubes' },
     { id: 'matches', icon: Calendar, label: 'Partidos' }
   ];
@@ -1537,7 +1674,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.0 Torneos</div>
+        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.1 Edición</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><img 
@@ -1561,7 +1698,6 @@ export default function App() {
               {view === 'dashboard' && <DashboardView />}
               {view === 'teams' && <TeamsView />}
               {view === 'matches' && <MatchesView />}
-              {/* --- NUEVO: Renderizado de Torneos --- */}
               {view === 'tournaments' && (
                 <TournamentsView 
                   tournaments={tournaments}
@@ -1577,5 +1713,3 @@ export default function App() {
     </div>
   );
 }
-
-
