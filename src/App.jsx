@@ -1348,7 +1348,7 @@ export default function App() {
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><img 
   src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-  className="w-21 h-21 object-contain"
+  className="w-20 h-20 object-contain"
   alt="Logo"
 /> <span className="text-3xl">COPA REYES</span></div>
          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">{mobileMenuOpen ? <X /> : <Menu />}</button>
