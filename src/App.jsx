@@ -18,8 +18,8 @@ import {
   orderBy, 
   serverTimestamp,
   writeBatch,
-  arrayUnion,
-  arrayRemove
+  arrayUnion, // --- NUEVO ---
+  arrayRemove // --- NUEVO ---
 } from 'firebase/firestore';
 import { 
   Trophy, 
@@ -42,50 +42,29 @@ import {
   Repeat,
   Check,
   XCircle,
-  Shield,
-  UsersRound,
-  CheckSquare,
-  Trello,
-  ArrowLeft,
-  Edit, // --- NUEVO ---
-  Eye // --- NUEVO ---
+  Shield, // --- NUEVO ---
+  UsersRound, // --- NUEVO ---
+  CheckSquare, // --- NUEVO ---
+  Trello, // --- NUEVO ---
+  ArrowLeft // --- NUEVO ---
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
-// Simulación de variables de entorno para que funcione en este entorno
-const DUMMY_ENV = {
-  VITE_API_KEY: "DUMMY_API_KEY",
-  VITE_AUTH_DOMAIN: "DUMMY_AUTH_DOMAIN",
-  VITE_PROJECT_ID: "DUMMY_PROJECT_ID",
-  VITE_STORAGE_BUCKET: "DUMMY_STORAGE_BUCKET",
-  VITE_MESSAGING_SENDER_ID: "DUMMY_SENDER_ID",
-  VITE_APP_ID: "DUMMY_APP_ID"
-};
-
 const firebaseConfig = {
-    apiKey: DUMMY_ENV.VITE_API_KEY,
-    authDomain: DUMMY_ENV.VITE_AUTH_DOMAIN,
-    projectId: DUMMY_ENV.VITE_PROJECT_ID,
-    storageBucket: DUMMY_ENV.VITE_STORAGE_BUCKET,
-    messagingSenderId: DUMMY_ENV.VITE_MESSAGING_SENDER_ID,
-    appId: DUMMY_ENV.VITE_APP_ID
+    // Usamos import.meta.env.VITE_... para leer las variables de Vercel/Vite
+    apiKey: import.meta.env.VITE_API_KEY,
+    authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_APP_ID
 };
 
-// --- INICIALIZACIÓN DE FIREBASE ---
-// Usamos variables globales si están disponibles (entorno de producción)
-// o la configuración dummy si no lo están.
-const finalFirebaseConfig = typeof __firebase_config !== 'undefined' 
-    ? JSON.parse(__firebase_config) 
-    : firebaseConfig;
-
-const app = initializeApp(finalFirebaseConfig);
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
-// Usamos el App ID global o el de VITE/Dummy
-const appId = typeof __app_id !== 'undefined' 
-    ? __app_id 
-    : (DUMMY_ENV.VITE_PROJECT_ID || 'default-app-id');
+// Usamos el Project ID como App ID
+const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
 
 
 // --- UTILIDADES ---
@@ -116,7 +95,7 @@ const getInitialPenaltyShootout = () => ({
   isKicking: false
 });
 
-// --- Utilidad para calcular tablas de posiciones ---
+// --- NUEVO: Utilidad para calcular tablas de posiciones ---
 const calculateStandings = (groupId, teamIds, allTeams, allMatches) => {
     // 1. Inicializar la tabla
     const standings = teamIds.map(id => {
@@ -202,6 +181,7 @@ const Button = ({ onClick, children, variant = "primary", className = "", disabl
   );
 };
 
+// --- NUEVO: Input más pequeño ---
 const SmallInput = ({ ...props }) => (
   <input 
     className="bg-white border border-green-200 text-green-900 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none transition-all w-full"
@@ -216,6 +196,7 @@ const SmallSelect = ({ options, ...props }) => (
       {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
   </select>
 );
+// --- FIN NUEVO ---
 
 const Input = ({ label, ...props }) => (
   <div className="flex flex-col gap-1 mb-3">
@@ -302,60 +283,41 @@ const StatRow = ({ label, valA, valB, total }) => {
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [userId, setUserId] = useState(null); // --- NUEVO ---
   const [view, setView] = useState('dashboard'); 
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
-  const [tournaments, setTournaments] = useState([]);
+  const [tournaments, setTournaments] = useState([]); // --- NUEVO ---
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [timeScale, setTimeScale] = useState(60000); // Default x1
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   const [deleteTeamId, setDeleteTeamId] = useState(null);
   const [deleteMatchId, setDeleteMatchId] = useState(null);
-  const [deleteTournamentId, setDeleteTournamentId] = useState(null);
+  const [deleteTournamentId, setDeleteTournamentId] = useState(null); // --- NUEVO ---
 
   // Auth
   useEffect(() => {
     const initAuth = async () => {
         try {
-            // Usar token global si está disponible, si no, anónimo
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth); 
-            }
+            await signInAnonymously(auth); 
         } catch (e) {
-            console.error("Error al iniciar sesión:", e);
-            try {
-              await signInAnonymously(auth); // Fallback a anónimo
-            } catch (e2) {
-              console.error("Error en fallback anónimo:", e2);
-            }
+            console.error("Error al iniciar sesión anónima:", e);
         }
     };
-
     initAuth();
-    
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        if (currentUser) {
-            setUser(currentUser);
-            setUserId(currentUser.uid); // --- NUEVO ---
-        } else {
-            setUser(null);
-            setUserId(null); // --- NUEVO ---
-        }
+        setUser(currentUser);
     });
     return () => unsubscribe();
   }, []);
 
   // Data Fetching
   useEffect(() => {
-    if (!userId) return; // --- MODIFICADO: Usar userId ---
+    if (!user) return;
     
-    const userTeamsPath = collection(db, 'artifacts', appId, 'users', userId, 'teams');
-    const userMatchesPath = collection(db, 'artifacts', appId, 'users', userId, 'matches');
-    const userTournamentsPath = collection(db, 'artifacts', appId, 'users', userId, 'tournaments');
+    const userTeamsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'teams');
+    const userMatchesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'matches');
+    const userTournamentsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'tournaments'); // --- NUEVO ---
 
     const unsubTeams = onSnapshot(
         query(userTeamsPath, orderBy('name')), 
@@ -369,18 +331,19 @@ export default function App() {
         (err) => console.error("Error fetching matches:", err)
     );
 
+    // --- NUEVO: Listener de Torneos ---
     const unsubTournaments = onSnapshot(
         query(userTournamentsPath, orderBy('createdAt', 'desc')),
         (snap) => setTournaments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
         (err) => console.error("Error fetching tournaments:", err)
     );
 
-    return () => { unsubTeams(); unsubMatches(); unsubTournaments(); };
-  }, [userId]); // --- MODIFICADO: Depender de userId ---
+    return () => { unsubTeams(); unsubMatches(); unsubTournaments(); }; // --- MODIFICADO ---
+  }, [user]); 
 
   // Game Loop
   useEffect(() => {
-    if (!userId || matches.length === 0) return; // --- MODIFICADO ---
+    if (!user || matches.length === 0) return;
     const intervalId = setInterval(() => {
       matches.forEach(match => {
         if (match.status === 'scheduled' && match.autoStart) {
@@ -391,11 +354,11 @@ export default function App() {
       });
     }, timeScale); 
     return () => clearInterval(intervalId);
-  }, [userId, matches, timeScale, teams]); // --- MODIFICADO ---
+  }, [user, matches, timeScale, teams]);
 
   // --- LÓGICA SIMULACIÓN ---
   const startMatch = async (match) => {
-    if (!userId) return; // --- MODIFICADO ---
+    if (!user) return;
     const teamA = teams.find(t => t.id === match.teamAId);
     const teamB = teams.find(t => t.id === match.teamBId);
     const rosterA = teamA?.roster || generateRoster();
@@ -410,9 +373,9 @@ export default function App() {
     let startText = '¡RUEDA EL BALÓN! Comienza el partido.';
     if (match.matchType === 'leg1') startText = '¡Comienza el partido de IDA!';
     if (match.matchType === 'leg2') startText = '¡Comienza el partido de VUELTA!';
-    if (match.groupId) startText = `¡Comienza el partido del Grupo!`;
+    if (match.groupId) startText = `¡Comienza el partido del Grupo!`; // --- NUEVO ---
 
-    await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', match.id), { // --- MODIFICADO ---
+    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), {
       status: 'live', period: '1T', currentMinute: 0, addedTime: Math.floor(Math.random()*4)+1, halftimeCounter: 0, scoreA: 0, scoreB: 0,
       events: [{ type: 'whistle', minute: 0, text: startText }],
       stats: initialStats, lineups: { teamA: rosterA, teamB: rosterB }
@@ -420,7 +383,7 @@ export default function App() {
   };
 
   const simulateStep = async (match) => {
-    if (!match.lineups || !userId) return; // --- MODIFICADO ---
+    if (!match.lineups || !user) return; 
     let updates = {};
     const newEvents = [...match.events];
     const stats = { ...match.stats };
@@ -433,7 +396,7 @@ export default function App() {
       } else {
         updates = { halftimeCounter: newCounter };
       }
-      await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', match.id), updates); // --- MODIFICADO ---
+      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), updates);
       return;
     }
 
@@ -488,7 +451,7 @@ export default function App() {
         }
       }
       
-      await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', match.id), updates); // --- MODIFICADO ---
+      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), updates);
       return;
     }
     // --- FIN: LÓGICA DE FIN DE PARTIDO ---
@@ -547,29 +510,29 @@ export default function App() {
     }
     updates.events = newEvents;
     updates.stats = stats;
-    await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', match.id), updates); // --- MODIFICADO ---
+    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), updates);
   };
 
   const updateMatchScoreManual = async (matchId, team, delta) => {
-    if (!userId) return; // --- MODIFICADO ---
+    if (!user) return;
     const match = matches.find(m => m.id === matchId);
     if (!match) return;
     const updateData = {};
     if (team === 'A') updateData.scoreA = Math.max(0, match.scoreA + delta);
     if (team === 'B') updateData.scoreB = Math.max(0, match.scoreB + delta);
     updateData.events = [...match.events, { type: 'manual', minute: match.currentMinute || 0, text: `VAR: Ajuste manual de marcador` }];
-    await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', matchId), updateData); // --- MODIFICADO ---
+    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', matchId), updateData);
   };
 
   const handlePenaltyKick = async (match) => {
-    if (!userId || !match.penaltyShootout || match.penaltyShootout.isKicking || match.penaltyShootout.winner) return; // --- MODIFICADO ---
+    if (!user || !match.penaltyShootout || match.penaltyShootout.isKicking || match.penaltyShootout.winner) return;
     const teamA = teams.find(t => t.id === match.teamAId);
     const teamB = teams.find(t => t.id === match.teamBId);
     if (!teamA || !teamB) return;
     const currentShootout = JSON.parse(JSON.stringify(match.penaltyShootout));
     const newEvents = [...match.events];
     currentShootout.isKicking = true;
-    await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', match.id), { penaltyShootout: currentShootout }); // --- MODIFICADO ---
+    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { penaltyShootout: currentShootout });
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
     const kickerSide = currentShootout.kicker;
     const kickerTeam = (kickerSide === 'A') ? teamA : teamB;
@@ -610,7 +573,7 @@ export default function App() {
       const winnerTeam = (currentShootout.winner === 'A') ? teamA : teamB;
       newEvents.push({ type: 'whistle', minute: 'PEN', text: `¡${winnerTeam.name} GANA LA TANDA DE PENALES!` });
     }
-    await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', match.id), { // --- MODIFICADO ---
+    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), {
       status: newStatus,
       penaltyShootout: currentShootout,
       events: newEvents
@@ -866,7 +829,7 @@ export default function App() {
                           {match.status !== 'finished' && (
                             <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
                                 {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
-                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
+                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
                                 <div className="flex gap-2 mt-2">
                                     <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
                                     <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
@@ -892,8 +855,7 @@ export default function App() {
       )
   };
 
-  // --- MODIFICADO: MatchCard ahora acepta `tournaments` ---
-  const MatchCard = ({ match, onClick, onDelete, tournaments = [] }) => {
+  const MatchCard = ({ match, onClick, onDelete }) => {
       const teamA = teams.find(t => t.id === match.teamAId);
       const teamB = teams.find(t => t.id === match.teamBId);
       const teamADisplay = teamA?.shortName || teamA?.name.substring(0, 5) || 'LOC';
@@ -912,7 +874,7 @@ export default function App() {
                   if (aggB > aggA) winner = 'A';
               }
           }
-          else if (match.matchType === 'single' || match.matchType === 'leg1' || match.groupId) { // --- MODIFICADO ---
+          else if (match.matchType === 'single' || match.matchType === 'leg1') {
               if (match.scoreA > match.scoreB) winner = 'A';
               if (match.scoreB > match.scoreA) winner = 'B';
           }
@@ -933,6 +895,7 @@ export default function App() {
           } else { timeLabel = `${String(match.currentMinute).padStart(2, '0')}:00`; }
       }
       let globalLabel = null;
+      // --- MODIFICADO: Lógica de Global (Visual) ---
       if (match.matchType === 'leg1' || match.matchType === 'leg2') {
           const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
           const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
@@ -947,10 +910,6 @@ export default function App() {
              globalLabel = `Global: ${displayAggA}-${displayAggB}`;
           }
       }
-      
-      // --- NUEVO: Buscar nombre del torneo ---
-      const tournament = match.tournamentId ? tournaments.find(t => t.id === match.tournamentId) : null;
-      
       return (
           <div onClick={onClick} className="p-4 hover:bg-green-50 transition-all cursor-pointer group relative overflow-hidden rounded-xl">
               {(match.status === 'live' || match.status === 'penalties') && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-red-500' : 'bg-blue-500'}`}></div>}
@@ -962,24 +921,17 @@ export default function App() {
                   <Badge status={match.status} period={match.period} />
                   <span className="text-xs text-gray-500 font-mono">{timeLabel}</span>
               </div>
-              
-              {/* --- MODIFICADO: Mostrar info de Torneo o Ida/Vuelta --- */}
+              {/* --- MODIFICADO: Color de Texto y Lógica de Torneo --- */}
               <div className="flex justify-between items-center mb-4 pl-2 text-xs text-green-800 font-bold">
-                 <span className="flex items-center gap-1">
+                 <span>
                     {match.matchType === 'leg1' && 'IDA'}
                     {match.matchType === 'leg2' && 'VUELTA'}
-                    {tournament && (
-                        <span className={`flex items-center gap-1 ${globalLabel ? 'text-gray-500' : 'text-blue-600'}`}>
-                            <Shield size={12} /> {tournament.name}
-                        </span>
-                    )}
-                    {match.groupId && !tournament && 'GRUPO'}
+                    {match.groupId && 'GRUPO'}
                  </span>
-                 <span className="whitespace-nowrap text-red-600">
+                 <span className="whitespace-nowrap">
                     {globalLabel}
                  </span>
               </div>
-              
               <div className="flex items-center justify-between pl-2">
                   <div className="flex items-center gap-3 w-1/3">
                       <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-8 h-8 rounded-full bg-white border object-cover" />
@@ -1039,9 +991,9 @@ export default function App() {
     const [formData, setFormData] = useState({ name: '', shortName: '', logo: '', probability: 0.5, style: 'balanced' });
     const handleSubmit = async (e) => { 
         e.preventDefault(); 
-        if (!userId) return; // --- MODIFICADO ---
+        if (!user) return; 
         const roster = generateRoster();
-        await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); // --- MODIFICADO ---
+        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); 
         setIsEditing(false); 
         setFormData({ name: '', shortName: '', logo: '', probability: 0.5, style: 'balanced' }); 
     };
@@ -1080,12 +1032,11 @@ export default function App() {
     );
   };
 
-  // --- MODIFICADO: MatchCardWrapper ahora acepta y pasa `tournaments` ---
-  const MatchCardWrapper = ({ match, allMatches, onClick, onDelete, tournaments }) => {
-    if (match.matchType === 'single' || match.groupId || match.tournamentId) { // --- MODIFICADO: Incluir partidos de torneo ---
+  const MatchCardWrapper = ({ match, allMatches, onClick, onDelete }) => {
+    if (match.matchType === 'single') {
       return (
         <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
-          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} tournaments={tournaments} />
+          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
         </div>
       );
     }
@@ -1093,30 +1044,29 @@ export default function App() {
       const leg2 = allMatches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
       return (
         <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden divide-y divide-green-100">
-          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} tournaments={tournaments} />
-          {leg2 && ( <MatchCard match={leg2} onClick={() => onClick(leg2.id)} onDelete={onDelete} tournaments={tournaments} /> )}
+          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
+          {leg2 && ( <MatchCard match={leg2} onClick={() => onClick(leg2.id)} onDelete={onDelete} /> )}
         </div>
       );
     }
     return null;
   };
 
-  const MatchesView = ({ tournaments }) => { // --- MODIFICADO: Aceptar `tournaments` ---
+  const MatchesView = () => {
     const [isScheduling, setIsScheduling] = useState(false);
     const [formData, setFormData] = useState({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
-    
     const handleSchedule = async (e) => { 
         e.preventDefault(); 
-        if (!userId) return; // --- MODIFICADO ---
+        if (!user) return;
         const baseData = { status: 'scheduled', scoreA: 0, scoreB: 0, currentMinute: 0, events: [], period: '1T', addedTime: 0, halftimeCounter: 0, createdAt: serverTimestamp(), autoStart: formData.autoStart, tournamentId: null, groupId: null, seriesId: null, matchType: 'single' };
         if (formData.matchType === 'single') {
             if (!formData.teamAId || !formData.teamBId || !formData.startTime) return;
-            await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'matches'), { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime }); // --- MODIFICADO ---
+            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime });
         } else {
             if (!formData.teamAId || !formData.teamBId || !formData.startTime || !formData.startTimeLeg2) return;
             const seriesId = `series-${crypto.randomUUID()}`;
             const batch = writeBatch(db);
-            const matchesCollection = collection(db, 'artifacts', appId, 'users', userId, 'matches'); // --- MODIFICADO ---
+            const matchesCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'matches');
             const leg1Ref = doc(matchesCollection);
             batch.set(leg1Ref, { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime, matchType: 'leg1', seriesId: seriesId });
             const leg2Ref = doc(matchesCollection);
@@ -1127,10 +1077,9 @@ export default function App() {
         setFormData({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
     };
     
-    // --- MODIFICADO: Mostrar todos los partidos (incluidos los de torneo) excepto 'leg2' ---
-    const matchesToDisplay = matches
-      .filter(m => m.matchType !== 'leg2')
-      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Ordenar por fecha más reciente primero
+    // --- MODIFICADO: Filtrar partidos de torneo ---
+    // No mostramos partidos de grupos/eliminatoria en esta vista general
+    const matchesToDisplay = matches.filter(m => !m.tournamentId && m.matchType !== 'leg2');
 
     return (
       <div>
@@ -1145,29 +1094,22 @@ export default function App() {
             <Button type="submit" className="md:col-span-2">Confirmar</Button>
          </form></Card>}
          <div className="grid gap-3">{matchesToDisplay.map(m => (
-             <MatchCardWrapper 
-                key={m.id} 
-                match={m} 
-                allMatches={matches} 
-                onClick={setSelectedMatchId} 
-                onDelete={(id) => setDeleteMatchId(id)} 
-                tournaments={tournaments} // --- MODIFICADO: Pasar B---
-            />
+             <MatchCardWrapper key={m.id} match={m} allMatches={matches} onClick={setSelectedMatchId} onDelete={(id) => setDeleteMatchId(id)} />
          ))}</div>
       </div>
     );
   };
   
-  // --- Vista de Torneos ---
-  const TournamentsView = ({ tournaments, allTeams, allMatches, userId, onDeleteClick }) => { // --- MODIFICADO ---
+  // --- NUEVO: Vista de Torneos ---
+  const TournamentsView = ({ tournaments, allTeams, allMatches, user, onDeleteClick }) => {
     const [selectedTournament, setSelectedTournament] = useState(null);
     const [isCreating, setIsCreating] = useState(false);
     const [newTournamentName, setNewTournamentName] = useState("");
 
     const handleCreateTournament = async () => {
-        if (!userId || !newTournamentName.trim()) return; // --- MODIFICADO ---
+        if (!user || !newTournamentName.trim()) return;
         
-        await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'tournaments'), { // --- MODIFICADO ---
+        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'tournaments'), {
             name: newTournamentName,
             createdAt: serverTimestamp(),
             groups: [], // [{ id, name, teams: [], settings: { classifiedSlots: 2 } }]
@@ -1184,11 +1126,10 @@ export default function App() {
             <TournamentDetailView 
                 tournament={selectedTournament}
                 onBack={() => setSelectedTournament(null)}
-                userId={userId} // --- MODIFICADO ---
+                user={user}
                 allTeams={allTeams}
                 allMatches={allMatches}
                 onDeleteTournament={onDeleteClick}
-                onSelectMatch={setSelectedMatchId} // --- NUEVO ---
             />
         );
     }
@@ -1245,16 +1186,15 @@ export default function App() {
     );
   };
   
-  // --- Vista de Detalle de Torneo (Componente interno) ---
-  const TournamentDetailView = ({ tournament, onBack, userId, allTeams, allMatches, onDeleteTournament, onSelectMatch }) => { // --- MODIFICADO ---
+  // --- NUEVO: Vista de Detalle de Torneo (Componente interno) ---
+  const TournamentDetailView = ({ tournament, onBack, user, allTeams, allMatches, onDeleteTournament }) => {
     const [view, setView] = useState('groups'); // 'groups' or 'knockout'
-    const [isTournamentEditMode, setIsTournamentEditMode] = useState(false); // --- NUEVO ---
     const [groupForm, setGroupForm] = useState({ name: '', classifiedSlots: 2 });
     const [teamToAdd, setTeamToAdd] = useState({ groupId: null, teamId: '' });
     const [matchForm, setMatchForm] = useState({ groupId: null, teamAId: '', teamBId: '', startTime: '' });
     const [knockoutSetup, setKnockoutSetup] = useState(tournament.knockout ? tournament.knockout.type : 8);
 
-    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'tournaments', tournament.id); // --- MODIFICADO ---
+    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', tournament.id);
 
     const handleAddGroup = async () => {
         if (!groupForm.name.trim()) return;
@@ -1296,13 +1236,12 @@ export default function App() {
     
     const handleScheduleMatch = async () => {
         if (!matchForm.groupId || !matchForm.teamAId || !matchForm.teamBId || !matchForm.startTime) {
-            // Reemplazar alerta por un log
-            console.warn("Completa todos los campos para programar el partido.");
+            alert("Completa todos los campos para programar el partido.");
             return;
         }
         
         // Crear el partido en la colección 'matches'
-        await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'matches'), { // --- MODIFICADO ---
+        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), {
             teamAId: matchForm.teamAId,
             teamBId: matchForm.teamBId,
             startTime: matchForm.startTime,
@@ -1322,48 +1261,20 @@ export default function App() {
         setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '' });
     };
 
-    // --- MODIFICADO: handleSetupKnockout con mejores nombres ---
     const handleSetupKnockout = async () => {
         const type = parseInt(knockoutSetup, 10);
-        let matchesCount = 0;
-        let roundName = '';
-        if (type === 16) { matchesCount = 8; roundName = 'Octavos'; }
-        else if (type === 8) { matchesCount = 4; roundName = 'Cuartos'; }
-        else if (type === 4) { matchesCount = 2; roundName = 'Semifinal'; }
-        else { return; } // No hacer nada si no es un tipo válido
-
+        const matchesCount = type / 2;
         const newKnockout = {
             type: type,
             matches: Array.from({ length: matchesCount }, (_, i) => ({
-                id: `ko-match-${type}-${i+1}`, // ID más único
-                name: `${roundName} ${i+1}`,
+                id: `ko-match-${i+1}`,
+                name: `Partido ${i+1}`, // Ej: Cuartos 1
                 teamA: null,
                 teamB: null,
-                matchId: null 
+                matchId: null // ID del partido real
             }))
         };
         await updateDoc(docRef, { knockout: newKnockout });
-    };
-    
-    // --- NUEVO: handleSetKnockoutTeam ---
-    const handleSetKnockoutTeam = async (koMatchId, side, teamId) => {
-        if (!tournament.knockout) return;
-        
-        const newKnockoutMatches = tournament.knockout.matches.map(m => {
-            if (m.id === koMatchId) {
-                // Prevenir que un equipo juegue contra sí mismo
-                if ((side === 'teamA' && teamId === m.teamB) || (side === 'teamB' && teamId === m.teamA)) {
-                    return m; // No hacer nada
-                }
-                return { ...m, [side]: teamId || null }; // Poner null si se des-selecciona
-            }
-            return m;
-        });
-        
-        // Usar notación de puntos para actualizar solo el campo 'matches'
-        await updateDoc(docRef, { 
-            "knockout.matches": newKnockoutMatches 
-        });
     };
 
     const tournamentMatches = allMatches.filter(m => m.tournamentId === tournament.id);
@@ -1375,17 +1286,10 @@ export default function App() {
                 <Button variant="secondary" onClick={onBack}>
                     <ArrowLeft size={16} /> Volver a Torneos
                 </Button>
-                <h2 className="text-2xl font-bold text-green-900 text-center truncate px-4">{tournament.name}</h2>
-                <div className="flex gap-2">
-                    {/* --- NUEVO: Toggle Edición/Vista --- */}
-                    <Button variant="secondary" onClick={() => setIsTournamentEditMode(!isTournamentEditMode)}>
-                        {isTournamentEditMode ? <Eye size={16} /> : <Edit size={16} />}
-                        {isTournamentEditMode ? 'Ver' : 'Editar'}
-                    </Button>
-                    <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
-                        <Trash2 size={16} />
-                    </Button>
-                </div>
+                <h2 className="text-2xl font-bold text-green-900">{tournament.name}</h2>
+                <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
+                    <Trash2 size={16} /> Borrar Torneo
+                </Button>
             </div>
             
             {/* Tabs */}
@@ -1401,37 +1305,35 @@ export default function App() {
             {/* --- VISTA DE GRUPOS --- */}
             {view === 'groups' && (
                 <div className="space-y-8">
-                    {/* Formulario Añadir Grupo (Solo Modo Edición) */}
-                    {isTournamentEditMode && (
-                        <Card className="p-4 bg-gray-50 animate-in fade-in duration-300">
-                            <h3 className="font-bold text-green-800 mb-2">Añadir Nuevo Grupo</h3>
-                            <div className="flex flex-col md:flex-row gap-4 items-end">
-                                <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-green-600">Nombre del Grupo</label>
-                                    <SmallInput 
-                                        placeholder="Ej: Grupo A" 
-                                        value={groupForm.name}
-                                        onChange={e => setGroupForm({...groupForm, name: e.target.value})}
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-green-600">Cupos Clasificación</label>
-                                    <SmallInput 
-                                        type="number" 
-                                        min="1" max="4" 
-                                        value={groupForm.classifiedSlots}
-                                        onChange={e => setGroupForm({...groupForm, classifiedSlots: e.target.value})}
-                                    />
-                                </div>
-                                <Button onClick={handleAddGroup} className="w-full md:w-auto"><Plus size={16} />Añadir</Button>
+                    {/* Formulario Añadir Grupo */}
+                    <Card className="p-4 bg-gray-50">
+                        <h3 className="font-bold text-green-800 mb-2">Añadir Nuevo Grupo</h3>
+                        <div className="flex flex-col md:flex-row gap-4 items-end">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-green-600">Nombre del Grupo</label>
+                                <SmallInput 
+                                    placeholder="Ej: Grupo A" 
+                                    value={groupForm.name}
+                                    onChange={e => setGroupForm({...groupForm, name: e.target.value})}
+                                />
                             </div>
-                        </Card>
-                    )}
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-green-600">Cupos Clasificación</label>
+                                <SmallInput 
+                                    type="number" 
+                                    min="1" max="4" 
+                                    value={groupForm.classifiedSlots}
+                                    onChange={e => setGroupForm({...groupForm, classifiedSlots: e.target.value})}
+                                />
+                            </div>
+                            <Button onClick={handleAddGroup} className="w-full md:w-auto"><Plus size={16} />Añadir</Button>
+                        </div>
+                    </Card>
                     
                     {/* Lista de Grupos */}
                     {tournament.groups.map(group => {
                         const standings = calculateStandings(group.id, group.teams, allTeams, tournamentMatches);
-                        const groupMatches = tournamentMatches.filter(m => m.groupId === group.id).sort((a,b) => new Date(b.startTime) - new Date(a.startTime)); // Recientes primero
+                        const groupMatches = tournamentMatches.filter(m => m.groupId === group.id).reverse();
                         const teamsInGroup = group.teams.map(id => allTeams.find(t => t.id === id)).filter(Boolean);
                         const availableTeams = allTeams.filter(t => !group.teams.includes(t.id));
 
@@ -1466,10 +1368,7 @@ export default function App() {
                                                             <td className="px-2 py-2 whitespace-nowrap font-medium text-green-900 flex items-center gap-2">
                                                                 <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-5 h-5 rounded-full object-cover" />
                                                                 {t.name}
-                                                                {/* --- NUEVO: Solo en Modo Edición --- */}
-                                                                {isTournamentEditMode && (
-                                                                    <Trash2 size={14} className="text-gray-400 hover:text-red-600 cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
-                                                                )}
+                                                                <Trash2 size={14} className="text-gray-400 hover:text-red-600 cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
                                                             </td>
                                                             <td className="px-2 py-2 whitespace-nowrap text-center">{t.P}</td>
                                                             <td className="px-2 py-2 whitespace-nowrap text-center">{t.W}</td>
@@ -1483,47 +1382,35 @@ export default function App() {
                                             </table>
                                         </div>
 
-                                        {/* Añadir Equipo (Solo Modo Edición) */}
-                                        {isTournamentEditMode && (
-                                            <div className="flex gap-2 mt-4">
-                                                <SmallSelect
-                                                    options={[{ value: '', label: 'Añadir equipo al grupo...' }, ...availableTeams.map(t => ({ value: t.id, label: t.name }))]}
-                                                    value={teamToAdd.groupId === group.id ? teamToAdd.teamId : ''}
-                                                    onChange={e => setTeamToAdd({ groupId: group.id, teamId: e.target.value })}
-                                                />
-                                                <Button variant="secondary" onClick={() => handleAddTeamToGroup(group.id)}><UsersRound size={16} /></Button>
-                                            </div>
-                                        )}
+                                        {/* Añadir Equipo */}
+                                        <div className="flex gap-2 mt-4">
+                                            <SmallSelect
+                                                options={[{ value: '', label: 'Añadir equipo al grupo...' }, ...availableTeams.map(t => ({ value: t.id, label: t.name }))]}
+                                                value={teamToAdd.groupId === group.id ? teamToAdd.teamId : ''}
+                                                onChange={e => setTeamToAdd({ groupId: group.id, teamId: e.target.value })}
+                                            />
+                                            <Button variant="secondary" onClick={() => handleAddTeamToGroup(group.id)}><UsersRound size={16} /></Button>
+                                        </div>
                                     </div>
 
                                     {/* Derecha: Partidos */}
-                                    <div className="border-l border-green-100 pl-0 lg:pl-8">
-                                        {/* Programar Partido (Solo Modo Edición) */}
-                                        {isTournamentEditMode && (
-                                            <div className="mb-6">
-                                                <h4 className="font-bold text-green-800 mb-3">Programar Partido</h4>
-                                                <div className="space-y-2 p-3 bg-green-50 rounded-lg">
-                                                    <SmallSelect options={[{ value: '', label: 'Local...' }, ...teamsInGroup.map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamAId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamAId: e.target.value})} />
-                                                    <SmallSelect options={[{ value: '', label: 'Visitante...' }, ...teamsInGroup.filter(t => t.id !== matchForm.teamAId).map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamBId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamBId: e.target.value})} />
-                                                    <SmallInput type="datetime-local" value={matchForm.groupId === group.id ? matchForm.startTime : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, startTime: e.target.value})} />
-                                                    <Button onClick={handleScheduleMatch} className="w-full" disabled={matchForm.groupId !== group.id}><Calendar size={16}/> Programar</Button>
-                                                </div>
-                                            </div>
-                                        )}
+                                    <div className="border-l border-green-100 pl-8">
+                                        <h4 className="font-bold text-green-800 mb-3">Programar Partido</h4>
+                                        <div className="space-y-2 p-3 bg-green-50 rounded-lg">
+                                            <SmallSelect options={[{ value: '', label: 'Local...' }, ...teamsInGroup.map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamAId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamAId: e.target.value})} />
+                                            <SmallSelect options={[{ value: '', label: 'Visitante...' }, ...teamsInGroup.filter(t => t.id !== matchForm.teamAId).map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamBId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamBId: e.target.value})} />
+                                            <SmallInput type="datetime-local" value={matchForm.groupId === group.id ? matchForm.startTime : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, startTime: e.target.value})} />
+                                            <Button onClick={handleScheduleMatch} className="w-full" disabled={matchForm.groupId !== group.id}><Calendar size={16}/> Programar</Button>
+                                        </div>
                                         
                                         <h4 className="font-bold text-green-800 mt-6 mb-3">Partidos del Grupo</h4>
-                                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                                        <div className="space-y-2 max-h-48 overflow-y-auto">
                                             {groupMatches.length === 0 && <p className="text-xs text-gray-500">No hay partidos programados para este grupo.</p>}
                                             {groupMatches.map(m => {
                                                 const tA = allTeams.find(t => t.id === m.teamAId);
                                                 const tB = allTeams.find(t => t.id === m.teamBId);
                                                 return (
-                                                    // --- NUEVO: Click para ver detalle ---
-                                                    <div 
-                                                        key={m.id} 
-                                                        className="text-sm p-2 bg-white border border-gray-100 rounded flex justify-between items-center cursor-pointer hover:bg-green-50 transition-all"
-                                                        onClick={() => onSelectMatch(m.id)}
-                                                    >
+                                                    <div key={m.id} className="text-sm p-2 bg-white border border-gray-100 rounded flex justify-between items-center">
                                                         <div>
                                                             <span className="font-bold">{tA?.shortName || '?'}</span> {m.scoreA} - {m.scoreB} <span className="font-bold">{tB?.shortName || '?'}</span>
                                                         </div>
@@ -1543,27 +1430,24 @@ export default function App() {
             {/* --- VISTA DE ELIMINATORIA --- */}
             {view === 'knockout' && (
                 <div className="space-y-6">
-                    {/* Configurar Eliminatoria (Solo Modo Edición) */}
-                    {isTournamentEditMode && (
-                        <Card className="p-6 animate-in fade-in duration-300">
-                            <h3 className="font-bold text-green-800 mb-3">Configurar Eliminatoria</h3>
-                            <div className="flex gap-4 items-end">
-                                <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-green-600">Equipos en Fase Final</label>
-                                    <SmallSelect 
-                                        options={[
-                                            {value: 4, label: '4 Equipos (Semifinal)'},
-                                            {value: 8, label: '8 Equipos (Cuartos de Final)'},
-                                            {value: 16, label: '16 Equipos (Octavos de Final)'},
-                                        ]}
-                                        value={knockoutSetup}
-                                        onChange={e => setKnockoutSetup(e.target.value)}
-                                    />
-                                </div>
-                                <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
+                    <Card className="p-6">
+                        <h3 className="font-bold text-green-800 mb-3">Configurar Eliminatoria</h3>
+                        <div className="flex gap-4 items-end">
+                            <div className="flex-1">
+                                <label className="text-[10px] font-bold text-green-600">Equipos en Fase Final</label>
+                                <SmallSelect 
+                                    options={[
+                                        {value: 4, label: '4 Equipos (Semifinal)'},
+                                        {value: 8, label: '8 Equipos (Cuartos de Final)'},
+                                        {value: 16, label: '16 Equipos (Octavos de Final)'},
+                                    ]}
+                                    value={knockoutSetup}
+                                    onChange={e => setKnockoutSetup(e.target.value)}
+                                />
                             </div>
-                        </Card>
-                    )}
+                            <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
+                        </div>
+                    </Card>
 
                     {tournament.knockout && (
                         <Card className="p-6">
@@ -1571,31 +1455,13 @@ export default function App() {
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {tournament.knockout.matches.map(koMatch => (
                                     <div key={koMatch.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                        <div className="font-bold text-sm text-green-800 mb-3">{koMatch.name}</div>
-                                        
-                                        {/* --- NUEVO: VISTA DE EDICIÓN (Elegir Rivales) --- */}
-                                        {isTournamentEditMode ? (
-                                            <div className="space-y-2">
-                                                <SmallSelect 
-                                                    options={[{ value: '', label: 'Equipo Local...' }, ...allTeams.map(t => ({ value: t.id, label: t.name }))]}
-                                                    value={koMatch.teamA || ''}
-                                                    onChange={(e) => handleSetKnockoutTeam(koMatch.id, 'teamA', e.target.value)}
-                                                />
-                                                <SmallSelect 
-                                                    options={[{ value: '', label: 'Equipo Visitante...' }, ...allTeams.map(t => ({ value: t.id, label: t.name }))]}
-                                                    value={koMatch.teamB || ''}
-                                                    onChange={(e) => handleSetKnockoutTeam(koMatch.id, 'teamB', e.target.value)}
-                                                />
-                                                {/* TODO: Botón para crear el partido (futura mejora) */}
-                                            </div>
-                                        ) : (
-                                        /* --- NUEVO: VISTA LIMPIA --- */
-                                            <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
-                                                <span className="font-medium text-green-900 w-2/5 truncate">{koMatch.teamA ? (allTeams.find(t => t.id === koMatch.teamA)?.name || 'Equipo A') : 'A definir'}</span>
-                                                <span className="font-bold text-gray-400 text-xs">VS</span>
-                                                <span className="font-medium text-green-900 w-2/5 truncate text-right">{koMatch.teamB ? (allTeams.find(t => t.id === koMatch.teamB)?.name || 'Equipo B') : 'A definir'}</span>
-                                            </div>
-                                        )}
+                                        <div className="font-bold text-sm text-green-800 mb-2">{koMatch.name}</div>
+                                        <div className="flex items-center justify-between p-2 bg-white rounded">
+                                            <span>{koMatch.teamA ? (allTeams.find(t => t.id === koMatch.teamA)?.name || 'Equipo A') : 'A definir'}</span>
+                                            <span className="font-bold">vs</span>
+                                            <span>{koMatch.teamB ? (allTeams.find(t => t.id === koMatch.teamB)?.name || 'Equipo B') : 'A definir'}</span>
+                                        </div>
+                                        {/* Aquí se podría añadir lógica para vincular partidos */}
                                     </div>
                                 ))}
                              </div>
@@ -1608,7 +1474,7 @@ export default function App() {
   };
 
 
-  if (!userId) return ( // --- MODIFICADO ---
+  if (!user) return (
     <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center text-green-800 font-sans p-4">
       <div className="animate-spin text-green-600 mb-4"><Activity size={32} /></div>
       <div className="font-bold text-lg animate-pulse">Cargando Sistema de Táctica...</div>
@@ -1619,7 +1485,7 @@ export default function App() {
   // --- MODIFICADO: Menú y Renderizado Principal ---
   const navItems = [
     { id: 'dashboard', icon: Activity, label: 'Inicio' },
-    { id: 'tournaments', icon: Shield, label: 'Torneos' },
+    { id: 'tournaments', icon: Shield, label: 'Torneos' }, // --- NUEVO ---
     { id: 'teams', icon: Users, label: 'Clubes' },
     { id: 'matches', icon: Calendar, label: 'Partidos' }
   ];
@@ -1632,7 +1498,7 @@ export default function App() {
         message="Esta acción no se puede deshacer y borrará todos los datos asociados al equipo."
         onClose={() => setDeleteTeamId(null)}
         onConfirm={async () => {
-            if(userId) await deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'teams', deleteTeamId)); // --- MODIFICADO ---
+            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', deleteTeamId));
         }}
       />
       <ConfirmModal 
@@ -1641,7 +1507,7 @@ export default function App() {
         message="El partido será eliminado del historial permanentemente. Si es parte de una serie de Ida/Vuelta, el otro partido NO será borrado."
         onClose={() => setDeleteMatchId(null)}
         onConfirm={async () => {
-            if(userId) await deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'matches', deleteMatchId)); // --- MODIFICADO ---
+            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', deleteMatchId));
         }}
       />
       {/* --- NUEVO: Modal Borrar Torneo --- */}
@@ -1651,7 +1517,7 @@ export default function App() {
         message="Esta acción borrará el torneo, sus grupos y configuración. LOS PARTIDOS DEL TORNEO NO SERÁN BORRADOS de la lista general."
         onClose={() => setDeleteTournamentId(null)}
         onConfirm={async () => {
-            if(userId) await deleteDoc(doc(db, 'artifacts', appId, 'users', userId, 'tournaments', deleteTournamentId)); // --- MODIFICADO ---
+            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', deleteTournamentId));
         }}
       />
 
@@ -1671,7 +1537,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.1 Edición Torneos</div>
+        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.0 Torneos</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><img 
@@ -1694,14 +1560,14 @@ export default function App() {
             <>
               {view === 'dashboard' && <DashboardView />}
               {view === 'teams' && <TeamsView />}
-              {/* --- MODIFICADO: Pasar `tournaments` a MatchesView --- */}
-              {view === 'matches' && <MatchesView tournaments={tournaments} />}
+              {view === 'matches' && <MatchesView />}
+              {/* --- NUEVO: Renderizado de Torneos --- */}
               {view === 'tournaments' && (
                 <TournamentsView 
                   tournaments={tournaments}
                   allTeams={teams}
                   allMatches={matches}
-                  userId={userId} // --- MODIFICADO ---
+                  user={user}
                   onDeleteClick={(id) => setDeleteTournamentId(id)}
                 />
               )}
@@ -1711,4 +1577,5 @@ export default function App() {
     </div>
   );
 }
+
 
