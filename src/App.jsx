@@ -486,6 +486,7 @@ export default function App() {
     
     // --- MODIFICADO: Lógica de fin de tanda (BUG CORREGIDO) ---
     // (attemptsA <= 5 || attemptsB <= 5) -> (attemptsA <= 5 && attemptsB <= 5)
+    // Se asegura que ambos estén en la ronda de 5
     if (attemptsA <= 5 && attemptsB <= 5) {
       // Ronda regular de 5
       const kicksLeftA = 5 - attemptsA;
@@ -498,14 +499,15 @@ export default function App() {
       } else if (attemptsA === 5 && attemptsB === 5 && scoreA !== scoreB) { // Terminaron los 5 y no hay empate
         currentShootout.winner = (scoreA > scoreB) ? 'A' : 'B';
       }
-      // Si attemptsA=5, attemptsB=5 y scoreA=scoreB, sigue a muerte súbita
+      // Si attemptsA=5, attemptsB=5 y scoreA=scoreB, sigue a muerte súbita (no se hace nada aquí)
     } 
     
     // Muerte súbita (solo se revisa al final de una ronda completa)
+    // Se activa solo si attemptsA > 5 (ya pasaron los 5) Y ambos patearon (attemptsA === attemptsB)
     if (attemptsA > 5 && attemptsA === attemptsB) {
-      if (scoreA > scoreB) {
+      if (scoreA > scoreB) { // A metió, B falló
         currentShootout.winner = 'A';
-      } else if (scoreB > scoreA) {
+      } else if (scoreB > scoreA) { // A falló, B metió
         currentShootout.winner = 'B';
       }
     }
@@ -528,6 +530,7 @@ export default function App() {
 
   // --- COMPONENTES DE VISTA ---
 
+  // --- MODIFICADO: Componente para Penales (Layout y Colores) ---
   const PenaltyShootoutUI = ({ match, onKick }) => {
     const teamA = teams.find(t => t.id === match.teamAId);
     const teamB = teams.find(t => t.id === match.teamBId);
@@ -552,9 +555,14 @@ export default function App() {
     
     const getKicks = (side) => {
         const kicks = shootout.log.filter(k => k.kicker === side).map(k => k.result);
-        const totalAttempts = Math.max(5, shootout.attemptsA, shootout.attemptsB);
-        // Rellenar hasta 'totalAttempts'
-        while(kicks.length < totalAttempts) {
+        const totalAttempts = Math.max(shootout.attemptsA, shootout.attemptsB);
+        // Rellenar hasta 'totalAttempts' si está en progreso, o hasta el final si terminó
+        let displayAttempts = Math.max(5, totalAttempts);
+        if (shootout.winner) {
+          displayAttempts = totalAttempts;
+        }
+
+        while(kicks.length < displayAttempts) {
             kicks.push(null);
         }
         return kicks;
@@ -562,6 +570,13 @@ export default function App() {
     
     const kicksA = getKicks('A');
     const kicksB = getKicks('B');
+
+    // --- NUEVO: Separar kicks en filas de 5 ---
+    const kicksA_row1 = kicksA.slice(0, 5);
+    const kicksA_row2 = kicksA.slice(5);
+    const kicksB_row1 = kicksB.slice(0, 5);
+    const kicksB_row2 = kicksB.slice(5);
+
 
     const kickerName = shootout.kicker === 'A' ? teamA.name : teamB.name;
     const isFinished = !!shootout.winner;
@@ -577,9 +592,16 @@ export default function App() {
             {/* Equipo A */}
             <div className="flex flex-col items-center gap-3 flex-1">
               <span className="text-lg font-bold text-gray-700 text-center">{teamA.name}</span>
-              {/* --- MODIFICADO: Añadido flex-wrap y justify-center --- */}
-              <div className="flex gap-2 flex-wrap justify-center min-h-[36px]">
-                {kicksA.map((result, i) => renderIcon(result, `a-${i}`))}
+              {/* --- MODIFICADO: Layout de penales en 2 filas --- */}
+              <div className="flex flex-col gap-2 items-center">
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    {kicksA_row1.map((result, i) => renderIcon(result, `a1-${i}`))}
+                  </div>
+                  {kicksA_row2.length > 0 && (
+                    <div className="flex gap-2 flex-wrap justify-center">
+                      {kicksA_row2.map((result, i) => renderIcon(result, `a2-${i}`))}
+                    </div>
+                  )}
               </div>
               <div className="text-4xl font-bold text-blue-900">{shootout.scoreA}</div>
             </div>
@@ -589,9 +611,16 @@ export default function App() {
             {/* Equipo B */}
             <div className="flex flex-col items-center gap-3 flex-1">
               <span className="text-lg font-bold text-gray-700 text-center">{teamB.name}</span>
-              {/* --- MODIFICADO: Añadido flex-wrap y justify-center --- */}
-              <div className="flex gap-2 flex-wrap justify-center min-h-[36px]">
-                {kicksB.map((result, i) => renderIcon(result, `b-${i}`))}
+               {/* --- MODIFICADO: Layout de penales en 2 filas --- */}
+              <div className="flex flex-col gap-2 items-center">
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    {kicksB_row1.map((result, i) => renderIcon(result, `b1-${i}`))}
+                  </div>
+                  {kicksB_row2.length > 0 && (
+                    <div className="flex gap-2 flex-wrap justify-center">
+                      {kicksB_row2.map((result, i) => renderIcon(result, `b2-${i}`))}
+                    </div>
+                  )}
               </div>
               <div className="text-4xl font-bold text-blue-900">{shootout.scoreB}</div>
             </div>
@@ -616,6 +645,7 @@ export default function App() {
   };
 
 
+  // --- MODIFICADO: MatchDetail (Lógica de Global y Visibilidad de Penales) ---
   const MatchDetail = ({ match, onBack }) => {
       const teamA = teams.find(t => t.id === match.teamAId);
       const teamB = teams.find(t => t.id === match.teamBId);
@@ -659,29 +689,40 @@ export default function App() {
           timeDisplay = `MT (${String(remaining).padStart(2, '0')}:00)`;
       } else if (match.status === 'penalties') {
           timeDisplay = "PENALES";
+      } else if (match.status === 'finished' && match.penaltyShootout) {
+          // --- NUEVO: Mostrar "Penales" si terminó en penales ---
+          timeDisplay = "PENALES (F)";
       } else if ((match.period === '1T' && match.currentMinute > 45) || (match.period === '2T' && match.currentMinute > 90)) {
           const regular = match.period === '1T' ? 45 : 90;
           const added = match.currentMinute - regular;
           timeDisplay = `${String(regular).padStart(2, '0')}+${String(added).padStart(2, '0')}`;
       }
 
+      // --- MODIFICADO: Lógica de Marcador Global (Visual) ---
       let globalScore = null;
       if (match.matchType === 'leg1' || match.matchType === 'leg2') {
           const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
           const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
           
-          const globalTeamA = (match.matchType === 'leg1') ? teamA : teams.find(t => t.id === match.teamBId);
-          const globalTeamB = (match.matchType === 'leg1') ? teamB : teams.find(t => t.id === match.teamAId);
-
-          const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0);
-          const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0);
+          // Scores desde la perspectiva de la IDA
+          const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0); // Goles de TeamA (Ida)
+          const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0); // Goles de TeamB (Ida)
+          
+          // Determinar qué mostrar
+          let displayAggA = aggA;
+          let displayAggB = aggB;
+          
+          if (match.matchType === 'leg2') {
+              // Invertir para la VUELTA
+              // El local (teamA) de la vuelta es el TeamB de la ida (aggB)
+              displayAggA = aggB;
+              displayAggB = aggA;
+          }
           
           globalScore = {
-              teamAName: globalTeamA?.shortName || 'LOC',
-              teamBName: globalTeamB?.shortName || 'VIS',
-              scoreA: aggA,
-              scoreB: aggB,
-              label: (match.matchType === 'leg1' && match.status !== 'finished') ? '(GLOBAL 0-0)' : `(GLOBAL ${aggA}-${aggB})`
+              label: (match.matchType === 'leg1' && match.status === 'scheduled' && (!leg1 || leg1.status === 'scheduled')) 
+                      ? '(GLOBAL 0-0)' 
+                      : `(GLOBAL ${displayAggA}-${displayAggB})`
           };
       }
       
@@ -693,18 +734,25 @@ export default function App() {
           let winner = null;
           if (match.penaltyShootout && match.penaltyShootout.winner) {
             winner = match.penaltyShootout.winner;
-          } else if (globalScore) {
-            if (globalScore.scoreA > globalScore.scoreB) winner = 'A'; // Ojo: A y B del global
-            if (globalScore.scoreB > globalScore.scoreA) winner = 'B';
-            // Mapear A/B global al A/B del partido actual
-            if(match.matchType === 'leg1') {
-                // A es A, B es B
-            } else {
-                // A (partido) es B (global), B (partido) es A (global)
-                if (winner === 'A') winner = 'B';
-                else if (winner === 'B') winner = 'A';
+          } else if (match.matchType === 'leg2' || (match.matchType === 'leg1' && globalScore)) {
+            // Revisar global solo si está definido (para leg1 o leg2)
+            const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
+            const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
+            const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0);
+            const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0);
+
+            if (aggA > aggB) winner = 'A_GLOBAL'; // Gana TeamA de Ida
+            if (aggB > aggA) winner = 'B_GLOBAL'; // Gana TeamB de Ida
+            
+            // Mapear al partido actual
+            if (match.matchType === 'leg1') {
+                if (winner === 'A_GLOBAL') winner = 'A';
+                if (winner === 'B_GLOBAL') winner = 'B';
+            } else { // leg2
+                if (winner === 'A_GLOBAL') winner = 'B'; // TeamA (ida) es TeamB (vuelta)
+                if (winner === 'B_GLOBAL') winner = 'A'; // TeamB (ida) es TeamA (vuelta)
             }
-          } else {
+          } else { // Partido único
             if (match.scoreA > match.scoreB) winner = 'A';
             if (match.scoreB > match.scoreA) winner = 'B';
           }
@@ -719,7 +767,8 @@ export default function App() {
               <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-lg border border-green-100 shadow-sm">
                 <button onClick={onBack} className="text-green-700 hover:text-green-900 flex items-center gap-2 text-sm font-bold uppercase">← Volver</button>
                 
-                {match.status !== 'penalties' && (
+                {/* Ocultar controles en penales (activos o terminados) */}
+                {match.status !== 'penalties' && !(match.status === 'finished' && match.penaltyShootout) && (
                   <div className="flex gap-1">
                     {[60000, 2000, 1000, 50].map(speed => (
                         <button key={speed} onClick={() => setTimeScale(speed)} className={`w-8 h-8 flex items-center justify-center rounded text-xs font-bold transition-colors ${timeScale === speed ? 'bg-red-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
@@ -747,7 +796,6 @@ export default function App() {
                                   VS
                                 </div>
                               ) : (
-                                // --- MODIFICADO: Añadido justify-center ---
                                 <div className="text-4xl md:text-6xl font-sans font-bold text-white tracking-tighter flex items-center justify-center gap-2 drop-shadow-lg">
                                   <span className={`transition-opacity duration-500 ${scoreOpacityA}`}>{match.scoreA}</span>
                                   <span className="text-white/50 text-3xl">-</span>
@@ -756,16 +804,17 @@ export default function App() {
                               )}
                           </div>
                           {globalScore && (
-                              // --- MODIFICADO: Añadido whitespace-nowrap ---
                               <div className="mt-2 text-yellow-300 font-bold text-sm bg-black/20 px-2 py-0.5 rounded whitespace-nowrap">
                                   {globalScore.label}
                               </div>
                           )}
                           <div className="mt-4 flex flex-col items-center gap-2">
                               <Badge status={match.status} period={match.period} />
-                              {match.status !== 'finished' && match.status !== 'scheduled' && (
+                              {/* --- MODIFICADO: Mostrar tiempo (incluso si está finished y con penales) --- */}
+                              {match.status !== 'scheduled' && (
                                 <div className="flex items-center gap-2 text-yellow-300 font-mono text-xl font-bold drop-shadow">
-                                    {match.status !== 'penalties' && <Clock size={20} />} {timeDisplay}
+                                    {(match.status !== 'penalties' && !(match.status === 'finished' && match.penaltyShootout)) && <Clock size={20} />} 
+                                    {timeDisplay}
                                 </div>
                               )}
                           </div>
@@ -778,8 +827,9 @@ export default function App() {
                   </div>
               </div>
 
+              {/* --- MODIFICADO: Grid principal (Mostrar penales si terminó en penales) --- */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
-                  {match.status === 'penalties' ? (
+                  {(match.status === 'penalties' || (match.status === 'finished' && match.penaltyShootout)) ? (
                     <PenaltyShootoutUI match={match} onKick={() => handlePenaltyKick(match)} />
                   ) : (
                     <>
@@ -811,14 +861,17 @@ export default function App() {
                               </div>
                           </div>
                           
-                          <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
-                              {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
-                              {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
-                              <div className="flex gap-2 mt-2">
-                                  <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
-                                  <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
-                              </div>
-                          </div>
+                          {/* Controles Manuales (Ocultar si está finished) */}
+                          {match.status !== 'finished' && (
+                            <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
+                                {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
+                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
+                                <div className="flex gap-2 mt-2">
+                                    <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
+                                    <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
+                                </div>
+                            </div>
+                          )}
                       </div>
                       
                       <div className="lg:col-span-8 bg-white border border-green-100 rounded-xl overflow-hidden flex flex-col h-[600px] shadow-sm">
@@ -839,6 +892,7 @@ export default function App() {
       )
   };
 
+  // --- MODIFICADO: MatchCard (Lógica de Global y Colores) ---
   const MatchCard = ({ match, onClick, onDelete }) => {
       const teamA = teams.find(t => t.id === match.teamAId);
       const teamB = teams.find(t => t.id === match.teamBId);
@@ -857,10 +911,10 @@ export default function App() {
           else if (match.matchType === 'leg2') {
               const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
               if(leg1) {
-                  const aggA = leg1.scoreA + match.scoreB;
-                  const aggB = leg1.scoreB + match.scoreA;
-                  if (aggA > aggB) winner = 'B'; 
-                  if (aggB > aggA) winner = 'A';
+                  const aggA = leg1.scoreA + match.scoreB; // Goles TeamA Ida
+                  const aggB = leg1.scoreB + match.scoreA; // Goles TeamB Ida
+                  if (aggA > aggB) winner = 'B'; // Gana A (Ida) que es B (Vuelta)
+                  if (aggB > aggA) winner = 'A'; // Gana B (Ida) que es A (Vuelta)
               }
           }
           else if (match.matchType === 'single' || match.matchType === 'leg1') {
@@ -877,6 +931,8 @@ export default function App() {
           timeLabel = new Date(match.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       } else if (match.status === 'penalties') {
           timeLabel = "PEN";
+      } else if (match.status === 'finished' && match.penaltyShootout) {
+          timeLabel = "PEN(F)";
       } else if (match.status !== 'finished') {
           if (match.status === 'halftime') {
               timeLabel = "MT";
@@ -889,21 +945,31 @@ export default function App() {
           }
       }
       
+      // --- MODIFICADO: Lógica de Global (Visual) ---
       let globalLabel = null;
       if (match.matchType === 'leg1' || match.matchType === 'leg2') {
           const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
           const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
           
-          const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0);
-          const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0);
+          const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0); // Goles TeamA Ida
+          const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0); // Goles TeamB Ida
+          
+          let displayAggA = aggA;
+          let displayAggB = aggB;
+          
+          if (match.matchType === 'leg2') {
+              displayAggA = aggB;
+              displayAggB = aggA;
+          }
           
           if (match.status !== 'scheduled' || (leg1 && leg1.status === 'finished')) {
-             globalLabel = `Global: ${aggA}-${aggB}`;
+             globalLabel = `Global: ${displayAggA}-${displayAggB}`;
           }
       }
 
       return (
-          <div onClick={onClick} className="bg-white border border-green-100 p-4 rounded-xl hover:border-green-400 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden">
+          // --- MODIFICADO: Quitado el 'cuadro blanco' de aquí ---
+          <div onClick={onClick} className="p-4 hover:bg-green-50 transition-all cursor-pointer group relative overflow-hidden rounded-xl">
               {(match.status === 'live' || match.status === 'penalties') && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-red-500' : 'bg-blue-500'}`}></div>}
               <button 
                   onClick={(e) => { e.stopPropagation(); onDelete(match.id); }}
@@ -917,12 +983,12 @@ export default function App() {
                   <span className="text-xs text-gray-500 font-mono">{timeLabel}</span>
               </div>
 
-              <div className="flex justify-between items-center mb-4 pl-2 text-xs text-blue-700 font-bold">
+              {/* --- MODIFICADO: Color de Texto --- */}
+              <div className="flex justify-between items-center mb-4 pl-2 text-xs text-green-800 font-bold">
                  <span>
                     {match.matchType === 'leg1' && 'IDA'}
                     {match.matchType === 'leg2' && 'VUELTA'}
                  </span>
-                 {/* --- MODIFICADO: Añadido whitespace-nowrap --- */}
                  <span className="whitespace-nowrap">
                     {globalLabel}
                  </span>
@@ -1042,6 +1108,51 @@ export default function App() {
     );
   };
 
+  // --- NUEVO: Componente Wrapper para agrupar series ---
+  const MatchCardWrapper = ({ match, allMatches, onClick, onDelete }) => {
+    // Es un partido único
+    if (match.matchType === 'single') {
+      return (
+        <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
+          <MatchCard 
+            match={match} 
+            onClick={() => onClick(match.id)} 
+            onDelete={onDelete}
+          />
+        </div>
+      );
+    }
+
+    // Es una serie (leg1)
+    if (match.matchType === 'leg1') {
+      const leg2 = allMatches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
+      
+      return (
+        <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden divide-y divide-green-100">
+          {/* Partido de Ida */}
+          <MatchCard 
+            match={match} 
+            onClick={() => onClick(match.id)} 
+            onDelete={onDelete}
+          />
+          {/* Partido de Vuelta */}
+          {leg2 && (
+            <MatchCard 
+              match={leg2} 
+              onClick={() => onClick(leg2.id)} 
+              onDelete={onDelete}
+            />
+          )}
+        </div>
+      );
+    }
+    
+    // No debería llegar aquí (leg2 se filtra), pero por si acaso
+    return null;
+  };
+
+
+  // --- MODIFICADO: MatchesView (Usa el Wrapper) ---
   const MatchesView = () => {
     const [isScheduling, setIsScheduling] = useState(false);
     const [formData, setFormData] = useState({ 
@@ -1108,6 +1219,10 @@ export default function App() {
         setFormData({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
     };
 
+    // --- NUEVO: Filtrar partidos para agrupar ---
+    // Solo mostramos partidos 'single' o 'leg1'. El wrapper se encarga de buscar 'leg2'.
+    const matchesToDisplay = matches.filter(m => m.matchType !== 'leg2');
+
     return (
       <div>
          <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-green-900">Calendario</h2><Button onClick={() => setIsScheduling(!isScheduling)}>{isScheduling ? 'Cancelar' : <><Calendar size={16} /> Programar</>}</Button></div>
@@ -1168,11 +1283,13 @@ export default function App() {
             </form>
          </Card>}
 
-         <div className="grid gap-3">{matches.map(m => (
-             <MatchCard 
+         {/* --- MODIFICADO: Usar el wrapper y la lista filtrada --- */}
+         <div className="grid gap-3">{matchesToDisplay.map(m => (
+             <MatchCardWrapper 
                 key={m.id} 
                 match={m} 
-                onClick={() => setSelectedMatchId(m.id)} 
+                allMatches={matches} // Pasar la lista completa
+                onClick={setSelectedMatchId} 
                 onDelete={(id) => setDeleteMatchId(id)}
              />
          ))}</div>
@@ -1226,7 +1343,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v4.1 Corrección</div>
+        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v4.2 Agrupado</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><img 
