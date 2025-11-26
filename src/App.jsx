@@ -49,8 +49,9 @@ import {
   ArrowLeft,
   Edit,
   Eye,
-  Pencil, // --- NUEVO: Icono para editar
-  Save    // --- NUEVO: Icono para guardar
+  Pencil, 
+  Save,
+  Settings
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
@@ -97,7 +98,6 @@ const getInitialPenaltyShootout = () => ({
   isKicking: false
 });
 
-// --- NUEVO: Formateador de Fecha ---
 const formatDate = (dateString) => {
     if (!dateString) return "Fecha TBD";
     const date = new Date(dateString);
@@ -105,7 +105,9 @@ const formatDate = (dateString) => {
         weekday: 'short', 
         year: 'numeric', 
         month: 'short', 
-        day: 'numeric' 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
     });
 };
 
@@ -288,6 +290,40 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => {
   );
 };
 
+// --- NUEVO: Modal para editar fecha ---
+const EditDateModal = ({ isOpen, onClose, onConfirm, currentDate }) => {
+  const [newDate, setNewDate] = useState(currentDate || '');
+  
+  useEffect(() => {
+      setNewDate(currentDate || '');
+  }, [currentDate, isOpen]);
+
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border-2 border-green-100 transform scale-100">
+        <div className="flex items-center gap-3 text-green-700 mb-4">
+           <div className="bg-green-100 p-2 rounded-full"><Calendar size={24} /></div>
+           <h3 className="text-lg font-bold">Reprogramar Partido</h3>
+        </div>
+        <div className="mb-6">
+            <Input 
+                type="datetime-local" 
+                label="Nueva Fecha y Hora"
+                value={newDate} 
+                onChange={(e) => setNewDate(e.target.value)} 
+            />
+        </div>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={() => { onConfirm(newDate); onClose(); }}>Guardar</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const StatRow = ({ label, valA, valB, total }) => {
     const percentA = total > 0 ? (valA / total) * 100 : 50;
     return (
@@ -321,6 +357,10 @@ export default function App() {
   const [deleteTeamId, setDeleteTeamId] = useState(null);
   const [deleteMatchId, setDeleteMatchId] = useState(null);
   const [deleteTournamentId, setDeleteTournamentId] = useState(null); 
+  
+  // --- NUEVO: Estado para editar fecha de partido ---
+  const [editDateMatchId, setEditDateMatchId] = useState(null);
+  const [editDateCurrent, setEditDateCurrent] = useState('');
 
   // Auth
   useEffect(() => {
@@ -352,7 +392,6 @@ export default function App() {
         (err) => console.error("Error fetching teams:", err)
     );
 
-    // --- MODIFICADO: Ordenar partidos por fecha descendente (recientes arriba) ---
     const unsubMatches = onSnapshot(
         query(userMatchesPath, orderBy('startTime', 'desc')), 
         (snap) => setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
@@ -444,7 +483,7 @@ export default function App() {
         if (match.matchType === 'group') {
             updates.status = 'finished';
         }
-        else if (match.matchType === 'single' || match.matchType === 'knockout') { // --- MODIFICADO: Incluye knockout
+        else if (match.matchType === 'single' || match.matchType === 'knockout') {
             if (match.scoreA === match.scoreB) {
               updates.status = 'penalties';
               updates.penaltyShootout = getInitialPenaltyShootout();
@@ -600,6 +639,15 @@ export default function App() {
       penaltyShootout: currentShootout,
       events: newEvents
     });
+  };
+
+  // --- NUEVO: Manejador para guardar fecha editada ---
+  const handleUpdateMatchDate = async (newDate) => {
+      if (!user || !editDateMatchId || !newDate) return;
+      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', editDateMatchId), {
+          startTime: newDate
+      });
+      setEditDateMatchId(null);
   };
 
 
@@ -766,13 +814,12 @@ export default function App() {
           if (winner === 'A') scoreOpacityB = 'opacity-50';
       }
       
-      // --- MODIFICADO: Lógica para etiqueta de Torneo ---
       let tournamentLabel = null;
       if (match.tournamentId) {
           if (match.groupName) {
               tournamentLabel = `${match.groupName}${match.jornada ? ` - J${match.jornada}` : ' - Fase de Grupos'}`;
           } else if (match.stageName) {
-              tournamentLabel = match.stageName; // Ej: Cuartos de Final
+              tournamentLabel = match.stageName; 
           } else {
               tournamentLabel = "Fase Eliminatoria";
           }
@@ -793,7 +840,6 @@ export default function App() {
                 )}
               </div>
               <div className="bg-gradient-to-r from-green-800 to-green-700 rounded-t-2xl border-b-4 border-red-600 p-6 md:p-8 text-center relative overflow-hidden shadow-xl">
-                  {/* --- NUEVO: Mostrar fecha completa --- */}
                   <div className="absolute top-3 right-3 z-20 text-white/70 text-[10px] font-bold uppercase">{formatDate(match.startTime)}</div>
 
                   {match.matchType === 'leg1' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Ida</div>}
@@ -896,7 +942,7 @@ export default function App() {
       )
   };
 
-  const MatchCard = ({ match, onClick, onDelete }) => {
+  const MatchCard = ({ match, onClick, onDelete, onEditDate }) => {
       const teamA = teams.find(t => t.id === match.teamAId);
       const teamB = teams.find(t => t.id === match.teamBId);
       const teamADisplay = teamA?.shortName || teamA?.name.substring(0, 5) || 'LOC';
@@ -925,7 +971,6 @@ export default function App() {
       
       let timeLabel = "";
       if (match.status === 'scheduled') {
-          // --- NUEVO: Mostrar fecha completa si está agendado ---
           timeLabel = formatDate(match.startTime);
       } else if (match.status === 'penalties') { timeLabel = "PEN"; }
       else if (match.status === 'finished' && match.penaltyShootout) { timeLabel = "PEN(F)"; }
@@ -937,7 +982,6 @@ export default function App() {
               timeLabel = `${String(regular).padStart(2, '0')}+${String(added).padStart(2, '0')}`;
           } else { timeLabel = `${String(match.currentMinute).padStart(2, '0')}:00`; }
       } else {
-          // Si finalizó, mostrar fecha corta
           timeLabel = formatDate(match.startTime);
       }
 
@@ -957,13 +1001,12 @@ export default function App() {
           }
       }
       
-      // --- MODIFICADO: Etiqueta de Torneo Detallada ---
       let tournamentLabel = null;
       if (match.tournamentId) {
           if (match.groupName) {
               tournamentLabel = `${match.groupName}${match.jornada ? ` - J${match.jornada}` : ''}`;
           } else if (match.stageName) {
-              tournamentLabel = match.stageName; // Ej: Cuartos de Final
+              tournamentLabel = match.stageName; 
           } else {
               tournamentLabel = "Eliminatoria";
           }
@@ -972,10 +1015,19 @@ export default function App() {
       return (
           <div onClick={onClick} className="p-4 hover:bg-green-50 transition-all cursor-pointer group relative overflow-hidden rounded-xl">
               {(match.status === 'live' || match.status === 'penalties') && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-red-500' : 'bg-blue-500'}`}></div>}
-              <button onClick={(e) => { e.stopPropagation(); onDelete(match.id); }}
-                  className="absolute top-2 right-2 z-20 text-gray-300 hover:text-red-600 p-1.5 bg-white/80 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all">
-                  <Trash2 size={14} />
-              </button>
+              
+              <div className="absolute top-2 right-2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  {/* --- NUEVO: Botón editar fecha --- */}
+                  <button onClick={(e) => { e.stopPropagation(); onEditDate(match.id, match.startTime); }}
+                      className="text-gray-300 hover:text-blue-600 p-1.5 bg-white/80 rounded-full shadow-sm">
+                      <Pencil size={14} />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); onDelete(match.id); }}
+                      className="text-gray-300 hover:text-red-600 p-1.5 bg-white/80 rounded-full shadow-sm">
+                      <Trash2 size={14} />
+                  </button>
+              </div>
+
               <div className="flex justify-between items-center mb-1 pl-2">
                   <Badge status={match.status} period={match.period} />
                   <span className="text-xs text-gray-500 font-mono font-bold uppercase">{timeLabel}</span>
@@ -1046,7 +1098,7 @@ export default function App() {
 
   const TeamsView = () => {
     const [isEditing, setIsEditing] = useState(false);
-    const [editingTeamId, setEditingTeamId] = useState(null); // --- NUEVO: ID del equipo a editar
+    const [editingTeamId, setEditingTeamId] = useState(null); 
     const [formData, setFormData] = useState({ name: '', shortName: '', logo: '', probability: 0.5, style: 'balanced' });
 
     const handleSubmit = async (e) => { 
@@ -1054,10 +1106,8 @@ export default function App() {
         if (!user) return; 
         
         if (editingTeamId) {
-            // --- NUEVO: Lógica de Actualización ---
             await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', editingTeamId), formData);
         } else {
-            // Lógica de Creación
             const roster = generateRoster();
             await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); 
         }
@@ -1081,7 +1131,6 @@ export default function App() {
         });
         setEditingTeamId(team.id);
         setIsEditing(true);
-        // Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -1119,7 +1168,6 @@ export default function App() {
                         <div className="font-bold text-sm text-green-900">{t.name} ({t.shortName || 'N/A'})</div>
                         <div className="text-[10px] text-gray-500 font-bold uppercase">{t.style}</div>
                     </div>
-                    {/* --- NUEVO: Botón de Editar --- */}
                     <div className="flex gap-1">
                         <button onClick={(e) => { e.stopPropagation(); handleEditTeam(t); }} className="text-gray-400 hover:text-blue-500 p-2 bg-gray-50 hover:bg-blue-50 rounded-full transition-colors"> <Pencil size={14}/> </button>
                         <button onClick={(e) => { e.stopPropagation(); setDeleteTeamId(t.id); }} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 hover:bg-red-50 rounded-full transition-colors"> <Trash2 size={14}/> </button>
@@ -1132,7 +1180,7 @@ export default function App() {
     );
   };
 
-  const MatchCardWrapper = ({ match, allMatches, onClick, onDelete }) => {
+  const MatchCardWrapper = ({ match, allMatches, onClick, onDelete, onEditDate }) => {
     if (match.matchType === 'leg2') {
         return null; 
     }
@@ -1141,15 +1189,15 @@ export default function App() {
       const leg2 = allMatches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
       return (
         <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden divide-y divide-green-100">
-          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
-          {leg2 && ( <MatchCard match={leg2} onClick={() => onClick(leg2.id)} onDelete={onDelete} /> )}
+          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} onEditDate={onEditDate} />
+          {leg2 && ( <MatchCard match={leg2} onClick={() => onClick(leg2.id)} onDelete={onDelete} onEditDate={onEditDate} /> )}
         </div>
       );
     }
     
     return (
       <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
-        <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
+        <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} onEditDate={onEditDate} />
       </div>
     );
   };
@@ -1157,6 +1205,7 @@ export default function App() {
   const MatchesView = () => {
     const [isScheduling, setIsScheduling] = useState(false);
     const [formData, setFormData] = useState({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
+    
     const handleSchedule = async (e) => { 
         e.preventDefault(); 
         if (!user) return;
@@ -1194,7 +1243,14 @@ export default function App() {
             <Button type="submit" className="md:col-span-2">Confirmar</Button>
          </form></Card>}
          <div className="grid gap-3">{matchesToDisplay.map(m => (
-             <MatchCardWrapper key={m.id} match={m} allMatches={matches} onClick={setSelectedMatchId} onDelete={(id) => setDeleteMatchId(id)} />
+             <MatchCardWrapper 
+                key={m.id} 
+                match={m} 
+                allMatches={matches} 
+                onClick={setSelectedMatchId} 
+                onDelete={(id) => setDeleteMatchId(id)} 
+                onEditDate={(id, date) => { setEditDateMatchId(id); setEditDateCurrent(date); }}
+             />
          ))}</div>
       </div>
     );
@@ -1290,7 +1346,11 @@ export default function App() {
     const [groupForm, setGroupForm] = useState({ name: '', classifiedSlots: 2 });
     const [teamToAdd, setTeamToAdd] = useState({ groupId: null, teamId: '' });
     const [matchForm, setMatchForm] = useState({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
+    
+    // --- NUEVO: Estado para configurar eliminatorias ---
     const [knockoutSetup, setKnockoutSetup] = useState(tournament.knockout ? tournament.knockout.type : 8);
+    const [thirdPlace, setThirdPlace] = useState(false); // Checkbox 3er puesto
+    const [koMatchDates, setKoMatchDates] = useState({}); // Para guardar fechas temporales al programar
 
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', tournament.id);
 
@@ -1360,29 +1420,57 @@ export default function App() {
         setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
     };
 
+    // --- NUEVO: Generar Bracket Completo ---
     const handleSetupKnockout = async () => {
         const type = parseInt(knockoutSetup, 10);
-        const matchesCount = type / 2;
-        const newKnockout = {
-            type: type,
-            matches: Array.from({ length: matchesCount }, (_, i) => ({
-                id: `ko-match-${i+1}`,
-                name: getKnockoutStageName(type, i), // --- NUEVO: Función auxiliar para nombres
+        let rounds = Math.log2(type); // 8 -> 3 rondas, 4 -> 2 rondas
+        let matches = [];
+        let matchIdCounter = 1;
+
+        // Generar rondas sucesivas
+        for (let r = 0; r < rounds; r++) {
+            // Ronda 0 = Cuartos (si 8), Semis (si 4)
+            // Número de partidos en esta ronda
+            const matchesInRound = type / Math.pow(2, r + 1);
+            
+            for (let m = 0; m < matchesInRound; m++) {
+                let name = "";
+                // Nombrado inteligente
+                if (matchesInRound === 8) name = `Octavos ${m+1}`;
+                else if (matchesInRound === 4) name = `Cuartos ${m+1}`;
+                else if (matchesInRound === 2) name = `Semifinal ${m+1}`;
+                else if (matchesInRound === 1) name = `FINAL`;
+
+                matches.push({
+                    id: `ko-m-${matchIdCounter}`,
+                    name: name,
+                    round: r, // 0 es primera ronda
+                    teamA: null,
+                    teamB: null,
+                    matchId: null 
+                });
+                matchIdCounter++;
+            }
+        }
+
+        // --- Agregar 3er Puesto si se seleccionó ---
+        if (thirdPlace) {
+            matches.push({
+                id: `ko-m-3rd`,
+                name: '3er Puesto',
+                round: 99, // Identificador especial
                 teamA: null,
                 teamB: null,
-                matchId: null 
-            }))
+                matchId: null
+            });
+        }
+
+        const newKnockout = {
+            type: type,
+            matches: matches
         };
         await updateDoc(docRef, { knockout: newKnockout });
     };
-
-    const getKnockoutStageName = (totalTeams, index) => {
-        if (totalTeams === 16) return `Octavos ${index + 1}`;
-        if (totalTeams === 8) return `Cuartos ${index + 1}`;
-        if (totalTeams === 4) return `Semifinal ${index + 1}`;
-        if (totalTeams === 2) return `Final`;
-        return `Partido ${index + 1}`;
-    }
     
     const handleUpdateKnockoutMatch = async (koMatchId, teamSide, teamId) => {
         if (!tournament.knockout) return;
@@ -1399,10 +1487,16 @@ export default function App() {
         await updateDoc(docRef, { knockout: newKnockout });
     };
 
-    // --- NUEVO: Crear partido desde el cuadro de eliminatoria ---
+    // --- NUEVO: Crear partido con fecha específica ---
     const handleCreateKnockoutMatch = async (koMatch) => {
         if (!koMatch.teamA || !koMatch.teamB) {
             alert("Selecciona ambos equipos para programar el partido.");
+            return;
+        }
+
+        const date = koMatchDates[koMatch.id];
+        if (!date) {
+            alert("Por favor selecciona una fecha y hora para el partido.");
             return;
         }
 
@@ -1410,7 +1504,7 @@ export default function App() {
         const matchRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), {
             teamAId: koMatch.teamA,
             teamBId: koMatch.teamB,
-            startTime: new Date().toISOString(), // Default: Hoy
+            startTime: date, // Usar la fecha seleccionada
             status: 'scheduled',
             autoStart: true,
             scoreA: 0, scoreB: 0,
@@ -1423,7 +1517,7 @@ export default function App() {
             stageName: koMatch.name, // Instancia (Cuartos, Semis, etc)
             jornada: null,
             seriesId: null,
-            matchType: 'knockout', // Tipo especial para penales
+            matchType: 'knockout', 
         });
 
         // Vincular ID al bracket
@@ -1625,27 +1719,39 @@ export default function App() {
                     {isEditMode && (
                         <Card className="p-6">
                             <h3 className="font-bold text-green-800 mb-3">Configurar Eliminatoria</h3>
-                            <div className="flex gap-4 items-end">
-                                <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-green-600">Equipos en Fase Final</label>
-                                    <SmallSelect 
-                                        options={[
-                                            {value: 4, label: '4 Equipos (Semifinal)'},
-                                            {value: 8, label: '8 Equipos (Cuartos de Final)'},
-                                            {value: 16, label: '16 Equipos (Octavos de Final)'},
-                                        ]}
-                                        value={knockoutSetup}
-                                        onChange={e => setKnockoutSetup(e.target.value)}
-                                    />
+                            <div className="flex flex-col gap-2">
+                                <div className="flex gap-4 items-end">
+                                    <div className="flex-1">
+                                        <label className="text-[10px] font-bold text-green-600">Equipos en Fase Final</label>
+                                        <SmallSelect 
+                                            options={[
+                                                {value: 4, label: '4 Equipos (Semifinal)'},
+                                                {value: 8, label: '8 Equipos (Cuartos de Final)'},
+                                                {value: 16, label: '16 Equipos (Octavos de Final)'},
+                                            ]}
+                                            value={knockoutSetup}
+                                            onChange={e => setKnockoutSetup(e.target.value)}
+                                        />
+                                    </div>
+                                    <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
                                 </div>
-                                <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
+                                {/* --- NUEVO: Checkbox 3er Puesto --- */}
+                                <label className="flex items-center gap-2 text-sm text-green-700 font-bold mt-2">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={thirdPlace} 
+                                        onChange={e => setThirdPlace(e.target.checked)}
+                                        className="accent-green-600 w-4 h-4"
+                                    /> 
+                                    Incluir partido por 3er Puesto
+                                </label>
                             </div>
                         </Card>
                     )}
 
                     {tournament.knockout && (
                         <Card className="p-6">
-                             <h3 className="text-xl font-bold text-red-700 mb-4">Cuadro de {tournament.knockout.type} Equipos</h3>
+                             <h3 className="text-xl font-bold text-red-700 mb-4">Cuadro de Eliminatoria</h3>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {tournament.knockout.matches.map(koMatch => {
                                     // Buscar partido real si existe
@@ -1657,10 +1763,14 @@ export default function App() {
                                         <div key={koMatch.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="font-bold text-sm text-green-800">{koMatch.name}</div>
-                                                {linkedMatch && <Badge status={linkedMatch.status} period={linkedMatch.period} />}
+                                                {linkedMatch && (
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge status={linkedMatch.status} period={linkedMatch.period} />
+                                                    </div>
+                                                )}
                                             </div>
                                             
-                                            {/* --- MODO EDICIÓN: Selectores de Equipos --- */}
+                                            {/* --- MODO EDICIÓN: Selectores y Fecha --- */}
                                             {isEditMode && !linkedMatch ? (
                                                 <div className="space-y-2">
                                                     <SmallSelect 
@@ -1673,16 +1783,32 @@ export default function App() {
                                                         value={koMatch.teamB || ''}
                                                         onChange={(e) => handleUpdateKnockoutMatch(koMatch.id, 'teamB', e.target.value)}
                                                     />
-                                                    {/* --- NUEVO: Botón Programar si ambos equipos están seleccionados --- */}
+                                                    
+                                                    {/* --- NUEVO: Input de fecha para eliminatoria --- */}
                                                     {koMatch.teamA && koMatch.teamB && (
-                                                        <Button onClick={() => handleCreateKnockoutMatch(koMatch)} className="w-full mt-2" variant="secondary">
-                                                            <Play size={14} /> Programar Partido
-                                                        </Button>
+                                                        <>
+                                                            <div className="pt-2">
+                                                                <label className="text-[10px] font-bold text-gray-500 uppercase">Fecha del Partido</label>
+                                                                <SmallInput 
+                                                                    type="datetime-local" 
+                                                                    value={koMatchDates[koMatch.id] || ''}
+                                                                    onChange={(e) => setKoMatchDates({...koMatchDates, [koMatch.id]: e.target.value})}
+                                                                />
+                                                            </div>
+                                                            <Button onClick={() => handleCreateKnockoutMatch(koMatch)} className="w-full mt-2" variant="secondary">
+                                                                <Play size={14} /> Programar Partido
+                                                            </Button>
+                                                        </>
                                                     )}
                                                 </div>
                                             ) : (
                                                 // --- MODO VISUAL O PARTIDO YA CREADO ---
                                                 <div className="bg-white rounded border border-gray-100 p-2">
+                                                    {linkedMatch && (
+                                                        <div className="text-[10px] text-center text-gray-500 mb-1 border-b border-gray-50 pb-1">
+                                                            {formatDate(linkedMatch.startTime)}
+                                                        </div>
+                                                    )}
                                                     <div className="flex justify-between items-center py-1">
                                                         <span className={!koMatch.teamA ? 'text-gray-400' : 'font-bold text-green-900'}>
                                                             {teamAObj?.name || 'A definir'}
@@ -1763,6 +1889,13 @@ export default function App() {
             if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', deleteTournamentId));
         }}
       />
+      {/* --- NUEVO: Modal Editar Fecha --- */}
+      <EditDateModal 
+        isOpen={!!editDateMatchId} 
+        currentDate={editDateCurrent}
+        onClose={() => setEditDateMatchId(null)}
+        onConfirm={handleUpdateMatchDate}
+      />
 
       <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-green-800 flex-col p-6 z-50 shadow-2xl border-r border-green-700">
         <div className="flex flex-col items-center mb-10 text-white border-b border-green-700 pb-6">
@@ -1780,7 +1913,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.2 - Eliminatorias</div>
+        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.3 - Final Bracket</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><img 
