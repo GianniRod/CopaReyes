@@ -18,8 +18,7 @@ import {
   orderBy, 
   serverTimestamp,
   writeBatch,
-  arrayUnion, 
-  arrayRemove 
+  arrayUnion
 } from 'firebase/firestore';
 import { 
   Trophy, 
@@ -47,13 +46,13 @@ import {
   CheckSquare, 
   Trello, 
   ArrowLeft,
-  Edit, // --- NUEVO ---
-  Eye // --- NUEVO ---
+  Edit, 
+  Eye,
+  Save
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
+// --- CONFIGURACIÓN FIREBASE ---
 const firebaseConfig = {
-    // Usamos import.meta.env.VITE_... para leer las variables de Vercel/Vite
     apiKey: import.meta.env.VITE_API_KEY,
     authDomain: import.meta.env.VITE_AUTH_DOMAIN,
     projectId: import.meta.env.VITE_PROJECT_ID,
@@ -65,9 +64,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-// Usamos el Project ID como App ID
 const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
-
 
 // --- UTILIDADES ---
 const playerPositions = [
@@ -97,9 +94,32 @@ const getInitialPenaltyShootout = () => ({
   isKicking: false
 });
 
-// --- NUEVO: Utilidad para calcular tablas de posiciones ---
+// Formatear fecha para mostrar
+const formatDate = (dateString) => {
+    if (!dateString) return "Fecha Pendiente";
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', { 
+        weekday: 'short', 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+    });
+};
+
+const formatFullDate = (dateString) => {
+    if (!dateString) return "Fecha Pendiente";
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+};
+
 const calculateStandings = (groupId, teamIds, allTeams, allMatches) => {
-    // 1. Inicializar la tabla
     const standings = teamIds.map(id => {
         const teamData = allTeams.find(t => t.id === id) || { id, name: 'Equipo Desconocido' };
         return { 
@@ -108,15 +128,12 @@ const calculateStandings = (groupId, teamIds, allTeams, allMatches) => {
         };
     });
 
-    // 2. Filtrar solo partidos de este grupo que hayan terminado
     const groupMatches = allMatches.filter(m => m.groupId === groupId && m.status === 'finished');
     
-    // 3. Iterar y calcular
     for (const match of groupMatches) {
         const teamA = standings.find(t => t.id === match.teamAId);
         const teamB = standings.find(t => t.id === match.teamBId);
         
-        // Omitir si algún equipo ya no está en el grupo
         if (!teamA || !teamB) continue;
 
         teamA.P++;
@@ -142,20 +159,17 @@ const calculateStandings = (groupId, teamIds, allTeams, allMatches) => {
         }
     }
     
-    // 4. Calcular GD
     standings.forEach(t => t.GD = t.GF - t.GA);
     
-    // 5. Ordenar
     standings.sort((a, b) => {
-        if (a.Pts !== b.Pts) return b.Pts - a.Pts; // Puntos
-        if (a.GD !== b.GD) return b.GD - a.GD; // Diferencia de Gol
-        if (a.GF !== b.GF) return b.GF - a.GF; // Goles a Favor
-        return a.name.localeCompare(b.name); // Alfabético
+        if (a.Pts !== b.Pts) return b.Pts - a.Pts;
+        if (a.GD !== b.GD) return b.GD - a.GD;
+        if (a.GF !== b.GF) return b.GF - a.GF;
+        return a.name.localeCompare(b.name);
     });
     
     return standings;
 };
-
 
 // --- COMPONENTES UI ---
 
@@ -170,6 +184,7 @@ const Button = ({ onClick, children, variant = "primary", className = "", disabl
     primary: "bg-red-600 hover:bg-red-700 text-white font-bold shadow-md shadow-red-200",
     secondary: "bg-white hover:bg-green-50 text-green-800 border border-green-200",
     danger: "bg-red-100 hover:bg-red-200 text-red-700 border border-red-200",
+    success: "bg-green-600 hover:bg-green-700 text-white shadow-md shadow-green-200"
   };
   return (
     <button 
@@ -183,7 +198,6 @@ const Button = ({ onClick, children, variant = "primary", className = "", disabl
   );
 };
 
-// --- NUEVO: Input más pequeño ---
 const SmallInput = ({ ...props }) => (
   <input 
     className="bg-white border border-green-200 text-green-900 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none transition-all w-full"
@@ -198,7 +212,6 @@ const SmallSelect = ({ options, ...props }) => (
       {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
   </select>
 );
-// --- FIN NUEVO ---
 
 const Input = ({ label, ...props }) => (
   <div className="flex flex-col gap-1 mb-3">
@@ -244,28 +257,25 @@ const Badge = ({ status, period }) => {
   );
 };
 
-// --- NUEVO: Componente Toggle Switch ---
 const ToggleSwitch = ({ isEnabled, onToggle, labelLeft, labelRight, IconLeft, IconRight }) => (
-  <div className="flex items-center gap-2">
+  <div className="flex items-center gap-2 cursor-pointer" onClick={onToggle}>
     <span className={`font-bold text-xs uppercase ${!isEnabled ? 'text-red-600' : 'text-gray-400'}`}>
         {IconLeft && <IconLeft size={16} className="inline-block mr-1" />}
         {labelLeft}
     </span>
-    <button
-      onClick={onToggle}
+    <div
       className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-green-600' : 'bg-gray-300'}`}
     >
       <span
         className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`}
       />
-    </button>
+    </div>
     <span className={`font-bold text-xs uppercase ${isEnabled ? 'text-green-700' : 'text-gray-400'}`}>
         {IconRight && <IconRight size={16} className="inline-block mr-1" />}
         {labelRight}
     </span>
   </div>
 );
-
 
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => {
   if (!isOpen) return null;
@@ -279,7 +289,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => {
         <p className="text-gray-600 mb-6 text-sm">{message}</p>
         <div className="flex justify-end gap-3">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={() => { onConfirm(); onClose(); }}>Sí, Eliminar</Button>
+          <Button variant="primary" onClick={() => { onConfirm(); onClose(); }}>Sí, Continuar</Button>
         </div>
       </div>
     </div>
@@ -303,7 +313,6 @@ const StatRow = ({ label, valA, valB, total }) => {
     );
 };
 
-
 // --- APP PRINCIPAL ---
 
 export default function App() {
@@ -326,7 +335,7 @@ export default function App() {
         try {
             await signInAnonymously(auth); 
         } catch (e) {
-            console.error("Error al iniciar sesión anónima:", e);
+            console.error("Error auth:", e);
         }
     };
     initAuth();
@@ -347,19 +356,20 @@ export default function App() {
     const unsubTeams = onSnapshot(
         query(userTeamsPath, orderBy('name')), 
         (snap) => setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-        (err) => console.error("Error fetching teams:", err)
+        (err) => console.error("Error teams:", err)
     );
 
+    // MODIFICADO: OrderBy startTime Desc para ver los más recientes arriba
     const unsubMatches = onSnapshot(
-        query(userMatchesPath, orderBy('startTime')), 
+        query(userMatchesPath, orderBy('startTime', 'desc')), 
         (snap) => setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-        (err) => console.error("Error fetching matches:", err)
+        (err) => console.error("Error matches:", err)
     );
 
     const unsubTournaments = onSnapshot(
         query(userTournamentsPath, orderBy('createdAt', 'desc')),
         (snap) => setTournaments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-        (err) => console.error("Error fetching tournaments:", err)
+        (err) => console.error("Error tournaments:", err)
     );
 
     return () => { unsubTeams(); unsubMatches(); unsubTournaments(); }; 
@@ -397,7 +407,8 @@ export default function App() {
     let startText = '¡RUEDA EL BALÓN! Comienza el partido.';
     if (match.matchType === 'leg1') startText = '¡Comienza el partido de IDA!';
     if (match.matchType === 'leg2') startText = '¡Comienza el partido de VUELTA!';
-    if (match.groupId) startText = `¡Comienza el partido del ${match.groupName || 'Grupo'}!`; // --- MODIFICADO ---
+    if (match.groupId) startText = `¡Comienza el partido del ${match.groupName || 'Grupo'}!`; 
+    if (match.matchType === 'knockout') startText = `¡Arranca ${match.stage || 'la eliminatoria'}!`;
 
     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), {
       status: 'live', period: '1T', currentMinute: 0, addedTime: Math.floor(Math.random()*4)+1, halftimeCounter: 0, scoreA: 0, scoreB: 0,
@@ -430,25 +441,23 @@ export default function App() {
     const regularTimeEnd = isFirstHalf ? 45 : 90;
     const maxTime = regularTimeEnd + (match.addedTime || 0);
 
-    // --- INICIO: LÓGICA DE FIN DE PARTIDO (MODIFICADA) ---
+    // FIN DE PARTIDO
     if (currentMin >= maxTime) {
       if (isFirstHalf) {
         updates = { status: 'halftime', period: 'HT', halftimeCounter: 0, events: [...newEvents, { type: 'whistle', minute: currentMin, text: `Fin del 1T (+${match.addedTime}')` }] };
       } else {
-        // Es el final del 2T
         newEvents.push({ type: 'whistle', minute: currentMin, text: `¡FINAL DEL PARTIDO! (+${match.addedTime}')` });
         updates.events = newEvents;
         
-        // --- MODIFICADO: Añadir lógica para partidos de torneo ---
-        // Los partidos de grupo (matchType 'group') NUNCA van a penales
+        // Reglas de finalización
         if (match.matchType === 'group') {
             updates.status = 'finished';
         }
-        else if (match.matchType === 'single') {
+        else if (match.matchType === 'single' || match.matchType === 'knockout') {
             if (match.scoreA === match.scoreB) {
               updates.status = 'penalties';
               updates.penaltyShootout = getInitialPenaltyShootout();
-              newEvents.push({ type: 'whistle', minute: 90, text: '¡El partido termina en empate! Habrá tanda de penales.' });
+              newEvents.push({ type: 'whistle', minute: 90, text: '¡Empate! Habrá penales.' });
             } else {
               updates.status = 'finished';
             }
@@ -464,13 +473,12 @@ export default function App() {
                 if (aggA === aggB) {
                   updates.status = 'penalties';
                   updates.penaltyShootout = getInitialPenaltyShootout();
-                  newEvents.push({ type: 'whistle', minute: 90, text: `¡Marcador global empatado ${aggA}-${aggB}! Habrá tanda de penales.` });
+                  newEvents.push({ type: 'whistle', minute: 90, text: `¡Global empatado ${aggA}-${aggB}! Penales.` });
                 } else {
                   updates.status = 'finished';
                 }
             }
         } else {
-            // Caso por defecto (partido de liga/amistoso sin tipo)
             updates.status = 'finished';
         }
       }
@@ -478,7 +486,6 @@ export default function App() {
       await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), updates);
       return;
     }
-    // --- FIN: LÓGICA DE FIN DE PARTIDO ---
 
     updates.currentMinute = nextMin;
     const teamA = teams.find(t => t.id === match.teamAId);
@@ -510,7 +517,7 @@ export default function App() {
                      updates[isTeamA ? 'scoreA' : 'scoreB'] = (match[isTeamA ? 'scoreA' : 'scoreB'] || 0) + 1;
                      newEvents.push({ type: 'goal', minute: nextMin, text: `¡GOL de ${player.name}! (${attackingTeamName})` });
                  } else {
-                     newEvents.push({ type: 'save', minute: nextMin, text: `¡Atajada impresionante ante disparo de ${player.name}!` });
+                     newEvents.push({ type: 'save', minute: nextMin, text: `¡Atajadón ante disparo de ${player.name}!` });
                  }
              }
           } else {
@@ -607,91 +614,6 @@ export default function App() {
 
   // --- COMPONENTES DE VISTA ---
 
-  const PenaltyShootoutUI = ({ match, onKick }) => {
-    const teamA = teams.find(t => t.id === match.teamAId);
-    const teamB = teams.find(t => t.id === match.teamBId);
-    const shootout = match.penaltyShootout;
-    if (!teamA || !teamB || !shootout) return null;
-    const renderIcon = (result, index) => {
-      if (result === 'goal') {
-        return <div key={index} className="w-7 h-7 rounded-full bg-green-500 border-2 border-green-600 flex items-center justify-center shadow-inner">
-          <Check size={18} className="text-white" />
-        </div>;
-      }
-      if (result === 'miss') {
-        return <div key={index} className="w-7 h-7 rounded-full bg-red-500 border-2 border-red-600 flex items-center justify-center shadow-inner">
-          <X size={18} className="text-white" />
-        </div>;
-      }
-      return <div key={index} className="w-7 h-7 rounded-full bg-gray-200 border-2 border-gray-300 shadow-inner"></div>;
-    };
-    const getKicks = (side) => {
-        const kicks = shootout.log.filter(k => k.kicker === side).map(k => k.result);
-        const totalAttempts = Math.max(shootout.attemptsA, shootout.attemptsB);
-        let displayAttempts = Math.max(5, totalAttempts);
-        if (shootout.winner) { displayAttempts = totalAttempts; }
-        while(kicks.length < displayAttempts) { kicks.push(null); }
-        return kicks;
-    };
-    const kicksA = getKicks('A');
-    const kicksB = getKicks('B');
-    const kicksA_row1 = kicksA.slice(0, 5);
-    const kicksA_row2 = kicksA.slice(5);
-    const kicksB_row1 = kicksB.slice(0, 5);
-    const kicksB_row2 = kicksB.slice(5);
-    const kickerName = shootout.kicker === 'A' ? teamA.name : teamB.name;
-    const isFinished = !!shootout.winner;
-    return (
-      <Card className="lg:col-span-12 bg-blue-50 border-blue-200 animate-in fade-in duration-300">
-        <div className="p-6">
-          <h3 className="text-blue-800 uppercase text-sm font-bold mb-6 flex items-center gap-2 border-b border-blue-100 pb-2">
-            <Target size={14} className="text-blue-600" /> Tanda de Penales
-          </h3>
-          <div className="flex justify-center items-start gap-6 mb-6">
-            <div className="flex flex-col items-center gap-3 flex-1">
-              <span className="text-lg font-bold text-gray-700 text-center">{teamA.name}</span>
-              <div className="flex flex-col gap-2 items-center">
-                  <div className="flex gap-2 flex-wrap justify-center">
-                    {kicksA_row1.map((result, i) => renderIcon(result, `a1-${i}`))}
-                  </div>
-                  {kicksA_row2.length > 0 && (
-                    <div className="flex gap-2 flex-wrap justify-center">
-                      {kicksA_row2.map((result, i) => renderIcon(result, `a2-${i}`))}
-                    </div>
-                  )}
-              </div>
-              <div className="text-4xl font-bold text-blue-900">{shootout.scoreA}</div>
-            </div>
-            <div className="text-2xl text-gray-400 font-bold pt-10">vs</div>
-            <div className="flex flex-col items-center gap-3 flex-1">
-              <span className="text-lg font-bold text-gray-700 text-center">{teamB.name}</span>
-              <div className="flex flex-col gap-2 items-center">
-                  <div className="flex gap-2 flex-wrap justify-center">
-                    {kicksB_row1.map((result, i) => renderIcon(result, `b1-${i}`))}
-                  </div>
-                  {kicksB_row2.length > 0 && (
-                    <div className="flex gap-2 flex-wrap justify-center">
-                      {kicksB_row2.map((result, i) => renderIcon(result, `b2-${i}`))}
-                    </div>
-                  )}
-              </div>
-              <div className="text-4xl font-bold text-blue-900">{shootout.scoreB}</div>
-            </div>
-          </div>
-          <div className="text-center">
-            {isFinished ? (
-              <p className="text-xl font-bold text-green-600">¡GANADOR: {(shootout.winner === 'A' ? teamA.name : teamB.name).toUpperCase()}!</p>
-            ) : (
-              <Button onClick={onKick} disabled={shootout.isKicking} className="bg-blue-600 hover:bg-blue-700 shadow-blue-200 text-lg px-8 py-3">
-                {shootout.isKicking ? 'Pateando...' : `Patear (${kickerName})`}
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
-    );
-  };
-
   const MatchDetail = ({ match, onBack }) => {
       const teamA = teams.find(t => t.id === match.teamAId);
       const teamB = teams.find(t => t.id === match.teamBId);
@@ -721,58 +643,13 @@ export default function App() {
           const added = match.currentMinute - regular;
           timeDisplay = `${String(regular).padStart(2, '0')}+${String(added).padStart(2, '0')}`;
       }
-      let globalScore = null;
-      if (match.matchType === 'leg1' || match.matchType === 'leg2') {
-          const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
-          const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
-          const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0);
-          const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0);
-          let displayAggA = aggA;
-          let displayAggB = aggB;
-          if (match.matchType === 'leg2') {
-              displayAggA = aggB;
-              displayAggB = aggA;
-          }
-          globalScore = {
-              label: (match.matchType === 'leg1' && match.status === 'scheduled' && (!leg1 || leg1.status === 'scheduled')) ? '(GLOBAL 0-0)' : `(GLOBAL ${displayAggA}-${displayAggB})`
-          };
-      }
-      const isFinished = match.status === 'finished';
-      let scoreOpacityA = 'opacity-100';
-      let scoreOpacityB = 'opacity-100';
-      if (isFinished) {
-          let winner = null;
-          if (match.penaltyShootout && match.penaltyShootout.winner) {
-            winner = match.penaltyShootout.winner;
-          } else if (match.matchType === 'leg2' || (match.matchType === 'leg1' && globalScore)) {
-            const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
-            const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
-            const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0);
-            const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0);
-            if (aggA > aggB) winner = 'A_GLOBAL';
-            if (aggB > aggA) winner = 'B_GLOBAL';
-            if (match.matchType === 'leg1') {
-                if (winner === 'A_GLOBAL') winner = 'A';
-                if (winner === 'B_GLOBAL') winner = 'B';
-            } else {
-                if (winner === 'A_GLOBAL') winner = 'B';
-                if (winner === 'B_GLOBAL') winner = 'A';
-            }
-          } else {
-            if (match.scoreA > match.scoreB) winner = 'A';
-            if (match.scoreB > match.scoreA) winner = 'B';
-          }
-          if (winner === 'B') scoreOpacityA = 'opacity-50';
-          if (winner === 'A') scoreOpacityB = 'opacity-50';
-      }
       
-      // --- NUEVO: Lógica para etiqueta de Torneo ---
       let tournamentLabel = null;
       if (match.tournamentId) {
           if (match.groupName) {
-              tournamentLabel = `${match.groupName}${match.jornada ? `, J${match.jornada}` : ''}`;
+              tournamentLabel = `${match.groupName}${match.jornada ? ` - Jornada ${match.jornada}` : ''}`;
           } else {
-              tournamentLabel = "Fase Eliminatoria"; // O buscar el nombre de la ronda si estuviera guardado
+              tournamentLabel = match.stage || "Fase Eliminatoria"; 
           }
       }
       
@@ -780,20 +657,11 @@ export default function App() {
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10">
               <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-lg border border-green-100 shadow-sm">
                 <button onClick={onBack} className="text-green-700 hover:text-green-900 flex items-center gap-2 text-sm font-bold uppercase">← Volver</button>
-                {match.status !== 'penalties' && !(match.status === 'finished' && match.penaltyShootout) && (
-                  <div className="flex gap-1">
-                    {[60000, 2000, 1000, 50].map(speed => (
-                        <button key={speed} onClick={() => setTimeScale(speed)} className={`w-8 h-8 flex items-center justify-center rounded text-xs font-bold transition-colors ${timeScale === speed ? 'bg-red-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
-                            {speed === 60000 ? 'x1' : speed === 2000 ? 'x30' : speed === 1000 ? 'x60' : '⚡'}
-                        </button>
-                    ))}
-                  </div>
-                )}
+                <div className="text-xs font-bold text-gray-500 uppercase">{formatFullDate(match.startTime)}</div>
               </div>
               <div className="bg-gradient-to-r from-green-800 to-green-700 rounded-t-2xl border-b-4 border-red-600 p-6 md:p-8 text-center relative overflow-hidden shadow-xl">
                   {match.matchType === 'leg1' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Ida</div>}
                   {match.matchType === 'leg2' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Vuelta</div>}
-                  {/* --- MODIFICADO: Mostrar etiqueta de torneo --- */}
                   {tournamentLabel && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">{tournamentLabel}</div>}
                   
                   <div className="flex justify-between items-center max-w-4xl mx-auto relative z-10">
@@ -807,15 +675,12 @@ export default function App() {
                                 <div className="text-4xl md:text-6xl font-sans font-bold text-white tracking-tighter drop-shadow-lg">VS</div>
                               ) : (
                                 <div className="text-4xl md:text-6xl font-sans font-bold text-white tracking-tighter flex items-center justify-center gap-2 drop-shadow-lg">
-                                  <span className={`transition-opacity duration-500 ${scoreOpacityA}`}>{match.scoreA}</span>
+                                  <span>{match.scoreA}</span>
                                   <span className="text-white/50 text-3xl">-</span>
-                                  <span className={`transition-opacity duration-500 ${scoreOpacityB}`}>{match.scoreB}</span>
+                                  <span>{match.scoreB}</span>
                                 </div>
                               )}
                           </div>
-                          {globalScore && (
-                              <div className="mt-2 text-yellow-300 font-bold text-sm bg-black/20 px-2 py-0.5 rounded whitespace-nowrap">{globalScore.label}</div>
-                          )}
                           <div className="mt-4 flex flex-col items-center gap-2">
                               <Badge status={match.status} period={match.period} />
                               {match.status !== 'scheduled' && (
@@ -833,60 +698,46 @@ export default function App() {
                   </div>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
-                  {(match.status === 'penalties' || (match.status === 'finished' && match.penaltyShootout)) ? (
-                    <PenaltyShootoutUI match={match} onKick={() => handlePenaltyKick(match)} />
-                  ) : (
-                    <>
-                      <div className="lg:col-span-4 space-y-4">
-                          <div className="bg-white border border-green-100 rounded-xl p-6 shadow-sm">
-                              <h3 className="text-green-800 uppercase text-xs font-bold mb-6 flex items-center gap-2 border-b border-green-100 pb-2">
-                                  <Activity size={14} className="text-red-600" /> Datos del Partido
-                              </h3>
-                              <div className="space-y-5">
-                                <div className="mb-6">
-                                    <div className="flex justify-between text-2xl font-mono font-bold text-green-900 mb-2">
-                                        <span className="text-green-700">{stats.possession}%</span>
-                                        <span className="text-[10px] font-sans text-gray-400 font-bold self-center uppercase">Posesión</span>
-                                        <span className="text-red-700">{100 - stats.possession}%</span>
-                                    </div>
-                                    <div className="flex h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                        <div className="bg-green-600" style={{ width: `${stats.possession}%` }}></div>
-                                        <div className="bg-red-600" style={{ width: `${100 - stats.possession}%` }}></div>
-                                    </div>
+                 <div className="lg:col-span-4 space-y-4">
+                      <div className="bg-white border border-green-100 rounded-xl p-6 shadow-sm">
+                          <h3 className="text-green-800 uppercase text-xs font-bold mb-6 flex items-center gap-2 border-b border-green-100 pb-2">
+                              <Activity size={14} className="text-red-600" /> Estadísticas
+                          </h3>
+                          <div className="space-y-5">
+                            <div className="mb-6">
+                                <div className="flex justify-between text-2xl font-mono font-bold text-green-900 mb-2">
+                                    <span className="text-green-700">{stats.possession}%</span>
+                                    <span className="text-[10px] font-sans text-gray-400 font-bold self-center uppercase">Posesión</span>
+                                    <span className="text-red-700">{100 - stats.possession}%</span>
                                 </div>
-                                <StatRow label="Tiros" valA={stats.shotsA} valB={stats.shotsB} total={stats.shotsA + stats.shotsB} />
-                                <StatRow label="Al Arco" valA={stats.onTargetA} valB={stats.onTargetB} total={stats.onTargetA + stats.onTargetB} />
-                                <StatRow label="Córners" valA={stats.cornersA} valB={stats.cornersB} total={stats.cornersA + stats.cornersB} />
-                                <div className="my-4 border-t border-green-50 border-dashed"></div>
-                                <StatRow label="Faltas" valA={stats.foulsA} valB={stats.foulsB} total={stats.foulsA + stats.foulsB} />
-                                <StatRow label="Amarillas" valA={stats.yellowA} valB={stats.yellowB} total={stats.yellowA + stats.yellowB} />
-                                <StatRow label="Rojas" valA={stats.redA} valB={stats.redB} total={stats.redA + stats.redB} />
-                              </div>
-                          </div>
-                          {match.status !== 'finished' && (
-                            <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
-                                {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
-                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
-                                <div className="flex gap-2 mt-2">
-                                    <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
-                                    <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
+                                <div className="flex h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                                    <div className="bg-green-600" style={{ width: `${stats.possession}%` }}></div>
+                                    <div className="bg-red-600" style={{ width: `${100 - stats.possession}%` }}></div>
                                 </div>
                             </div>
-                          )}
-                      </div>
-                      <div className="lg:col-span-8 bg-white border border-green-100 rounded-xl overflow-hidden flex flex-col h-[600px] shadow-sm">
-                          <div className="bg-green-50 p-3 border-b border-green-100"><h3 className="text-green-800 font-bold text-xs uppercase flex items-center gap-2"><Timer size={14} /> Minuto a Minuto</h3></div>
-                          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
-                              {[...match.events].reverse().map((ev, idx) => (
-                                  <div key={idx} className={`flex items-start gap-3 p-3 rounded border shadow-sm ${ev.type === 'goal' ? 'bg-yellow-50 border-yellow-200' : (ev.type === 'whistle' ? 'bg-blue-50 border-blue-100' : 'bg-white border-gray-100')}`}>
-                                      <div className="text-green-700 font-mono font-bold text-sm min-w-[32px] text-right">{ev.minute}'</div>
-                                      <div className="flex-1"><p className={`text-sm font-medium ${ev.type === 'goal' ? 'text-green-900 font-bold' : (ev.type === 'whistle' ? 'text-blue-800 font-bold' : 'text-gray-600')}`}>{ev.text}</p></div>
-                                  </div>
-                              ))}
+                            <StatRow label="Tiros" valA={stats.shotsA} valB={stats.shotsB} total={stats.shotsA + stats.shotsB} />
+                            <StatRow label="Al Arco" valA={stats.onTargetA} valB={stats.onTargetB} total={stats.onTargetA + stats.onTargetB} />
+                            <StatRow label="Faltas" valA={stats.foulsA} valB={stats.foulsB} total={stats.foulsA + stats.foulsB} />
                           </div>
                       </div>
-                    </>
-                  )}
+                      {match.status !== 'finished' && (
+                        <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
+                            {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
+                            {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
+                        </div>
+                      )}
+                  </div>
+                  <div className="lg:col-span-8 bg-white border border-green-100 rounded-xl overflow-hidden flex flex-col h-[600px] shadow-sm">
+                      <div className="bg-green-50 p-3 border-b border-green-100"><h3 className="text-green-800 font-bold text-xs uppercase flex items-center gap-2"><Timer size={14} /> Minuto a Minuto</h3></div>
+                      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
+                          {[...match.events].reverse().map((ev, idx) => (
+                              <div key={idx} className={`flex items-start gap-3 p-3 rounded border shadow-sm ${ev.type === 'goal' ? 'bg-yellow-50 border-yellow-200' : (ev.type === 'whistle' ? 'bg-blue-50 border-blue-100' : 'bg-white border-gray-100')}`}>
+                                  <div className="text-green-700 font-mono font-bold text-sm min-w-[32px] text-right">{ev.minute}'</div>
+                                  <div className="flex-1"><p className={`text-sm font-medium ${ev.type === 'goal' ? 'text-green-900 font-bold' : (ev.type === 'whistle' ? 'text-blue-800 font-bold' : 'text-gray-600')}`}>{ev.text}</p></div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
               </div>
           </div>
       )
@@ -897,64 +748,13 @@ export default function App() {
       const teamB = teams.find(t => t.id === match.teamBId);
       const teamADisplay = teamA?.shortName || teamA?.name.substring(0, 5) || 'LOC';
       const teamBDisplay = teamB?.shortName || teamB?.name.substring(0, 5) || 'VIS';
-      let scoreOpacityA = 'opacity-100';
-      let scoreOpacityB = 'opacity-100';
-      if (match.status === 'finished') {
-          let winner = null;
-          if (match.penaltyShootout && match.penaltyShootout.winner) { winner = match.penaltyShootout.winner; } 
-          else if (match.matchType === 'leg2') {
-              const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
-              if(leg1) {
-                  const aggA = leg1.scoreA + match.scoreB;
-                  const aggB = leg1.scoreB + match.scoreA;
-                  if (aggA > aggB) winner = 'B'; 
-                  if (aggB > aggA) winner = 'A';
-              }
-          }
-          else if (match.matchType === 'single' || match.matchType === 'group') { // --- MODIFICADO ---
-              if (match.scoreA > match.scoreB) winner = 'A';
-              if (match.scoreB > match.scoreA) winner = 'B';
-          }
-          if (winner === 'B') scoreOpacityA = 'opacity-50';
-          if (winner === 'A') scoreOpacityB = 'opacity-50';
-      }
-      let timeLabel = "";
-      if (match.status === 'scheduled') {
-          timeLabel = new Date(match.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-      } else if (match.status === 'penalties') { timeLabel = "PEN"; }
-      else if (match.status === 'finished' && match.penaltyShootout) { timeLabel = "PEN(F)"; }
-      else if (match.status !== 'finished') {
-          if (match.status === 'halftime') { timeLabel = "MT"; }
-          else if ((match.period === '1T' && match.currentMinute > 45) || (match.period === '2T' && match.currentMinute > 90)) {
-              const regular = match.period === '1T' ? 45 : 90;
-              const added = match.currentMinute - regular;
-              timeLabel = `${String(regular).padStart(2, '0')}+${String(added).padStart(2, '0')}`;
-          } else { timeLabel = `${String(match.currentMinute).padStart(2, '0')}:00`; }
-      }
-      let globalLabel = null;
-      // --- MODIFICADO: Lógica de Global (Visual) ---
-      if (match.matchType === 'leg1' || match.matchType === 'leg2') {
-          const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
-          const leg2 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
-          const aggA = (leg1 ? leg1.scoreA : 0) + (leg2 ? leg2.scoreB : 0);
-          const aggB = (leg1 ? leg1.scoreB : 0) + (leg2 ? leg2.scoreA : 0);
-          let displayAggA = aggA, displayAggB = aggB;
-          if (match.matchType === 'leg2') {
-              displayAggA = aggB;
-              displayAggB = aggA;
-          }
-          if (match.status !== 'scheduled' || (leg1 && leg1.status === 'finished')) {
-             globalLabel = `Global: ${displayAggA}-${displayAggB}`;
-          }
-      }
       
-      // --- NUEVO: Etiqueta de Torneo ---
       let tournamentLabel = null;
       if (match.tournamentId) {
           if (match.groupName) {
-              tournamentLabel = `${match.groupName}${match.jornada ? `, J${match.jornada}` : ''}`;
-          } else if (match.matchType !== 'group') {
-              tournamentLabel = "Eliminatoria"; // Etiqueta genérica para KO
+              tournamentLabel = `${match.groupName}${match.jornada ? ` - J${match.jornada}` : ''}`;
+          } else {
+              tournamentLabel = match.stage || "Eliminatoria";
           }
       }
 
@@ -967,18 +767,15 @@ export default function App() {
               </button>
               <div className="flex justify-between items-center mb-1 pl-2">
                   <Badge status={match.status} period={match.period} />
-                  <span className="text-xs text-gray-500 font-mono">{timeLabel}</span>
+                  {/* FECHA AÑADIDA AQUÍ */}
+                  <span className="text-xs text-gray-400 font-bold">{formatDate(match.startTime)}</span>
               </div>
-              {/* --- MODIFICADO: Color de Texto y Lógica de Torneo --- */}
+              
               <div className="flex justify-between items-center mb-4 pl-2 text-xs text-green-800 font-bold h-4">
                  <span className="truncate">
                     {match.matchType === 'leg1' && 'IDA'}
                     {match.matchType === 'leg2' && 'VUELTA'}
-                    {/* --- NUEVO: Mostrar info de torneo --- */}
                     {tournamentLabel}
-                 </span>
-                 <span className="whitespace-nowrap flex-shrink-0">
-                    {globalLabel}
                  </span>
               </div>
               <div className="flex items-center justify-between pl-2">
@@ -991,9 +788,9 @@ export default function App() {
                       <span className="text-xl text-green-600">VS</span>
                     ) : (
                       <div className="flex items-center justify-center gap-2">
-                        <span className={`transition-opacity duration-500 ${scoreOpacityA}`}>{match.scoreA}</span>
+                        <span>{match.scoreA}</span>
                         <span>-</span>
-                        <span className={`transition-opacity duration-500 ${scoreOpacityB}`}>{match.scoreB}</span>
+                        <span>{match.scoreB}</span>
                       </div>
                     )}
                   </div>
@@ -1006,51 +803,50 @@ export default function App() {
       );
   };
 
-  const DashboardView = () => {
-    const liveMatches = matches.filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'penalties');
-    return (
-      <div className="space-y-6 animate-in fade-in duration-500">
-        <div className="relative rounded-2xl overflow-hidden bg-green-800 p-8 shadow-xl text-white mb-8 border-b-4 border-red-600">
-            <div className="relative z-10">
-                <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2"><img 
-  src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-  className="w-14 h-14 object-contain"
-  alt="Logo"
-/> Edición Táctica</div>
-                <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-red-500 bg-white px-2 skew-x-[-10deg] inline-block">REYES</span> 2026</h2>
-            </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-5 border-l-4 border-l-red-500 bg-white shadow-sm">
-             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">En Juego</p><p className="text-3xl font-bold text-green-900">{liveMatches.length}</p></div>
-          </Card>
-          <Card className="p-5 border-l-4 border-l-green-600 bg-white shadow-sm">
-             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Programados</p><p className="text-3xl font-bold text-green-900">{matches.filter(m => m.status === 'scheduled').length}</p></div>
-          </Card>
-          <Card className="p-5 border-l-4 border-l-yellow-500 bg-white shadow-sm">
-             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Clubes</p><p className="text-3xl font-bold text-green-900">{teams.length}</p></div>
-          </Card>
-        </div>
-      </div>
-    );
-  };
-
   const TeamsView = () => {
     const [isEditing, setIsEditing] = useState(false);
+    const [editingId, setEditingId] = useState(null);
     const [formData, setFormData] = useState({ name: '', shortName: '', logo: '', probability: 0.5, style: 'balanced' });
+    
+    const startEdit = (team) => {
+        setFormData({ 
+            name: team.name, 
+            shortName: team.shortName, 
+            logo: team.logo, 
+            probability: team.probability, 
+            style: team.style || 'balanced'
+        });
+        setEditingId(team.id);
+        setIsEditing(true);
+    };
+
+    const cancelEdit = () => {
+        setIsEditing(false);
+        setEditingId(null);
+        setFormData({ name: '', shortName: '', logo: '', probability: 0.5, style: 'balanced' });
+    };
+
     const handleSubmit = async (e) => { 
         e.preventDefault(); 
         if (!user) return; 
-        const roster = generateRoster();
-        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); 
-        setIsEditing(false); 
-        setFormData({ name: '', shortName: '', logo: '', probability: 0.5, style: 'balanced' }); 
+        
+        if (editingId) {
+            // ACTUALIZAR EQUIPO
+            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', editingId), { ...formData });
+        } else {
+            // CREAR EQUIPO
+            const roster = generateRoster();
+            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); 
+        }
+        cancelEdit();
     };
+
     return (
       <div>
-        <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-green-900">Clubes Registrados</h2><Button onClick={() => setIsEditing(!isEditing)}>{isEditing ? 'Cancelar' : <><Plus size={16} /> Nuevo Club</>}</Button></div>
+        <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-green-900">Clubes Registrados</h2><Button onClick={() => isEditing ? cancelEdit() : setIsEditing(true)}>{isEditing ? 'Cancelar' : <><Plus size={16} /> Nuevo Club</>}</Button></div>
         {isEditing && (
           <Card className="p-6 mb-6 bg-white shadow-lg animate-in slide-in-from-top-2">
+            <h3 className="text-green-800 font-bold mb-4">{editingId ? 'Editar Club' : 'Nuevo Club'}</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
                <Input label="Nombre Completo" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="md:col-span-2" />
                <Input label="Abreviatura (3 letras)" value={formData.shortName} onChange={e => setFormData({...formData, shortName: e.target.value.toUpperCase().substring(0, 3)})} maxLength={3} />
@@ -1060,50 +856,28 @@ export default function App() {
                    <label className="text-[10px] uppercase tracking-widest text-green-600 font-bold mb-1 block">Fuerza: {Math.round(formData.probability*100)}%</label>
                    <input type="range" min="0.1" max="1.0" step="0.01" className="w-full h-2 bg-green-100 rounded-lg accent-green-600" value={formData.probability} onChange={e => setFormData({...formData, probability: parseFloat(e.target.value)})} />
                </div>
-               <Button type="submit" className="md:col-span-3">Guardar Equipo</Button>
+               <Button type="submit" className="md:col-span-3">{editingId ? 'Guardar Cambios' : 'Crear Equipo'}</Button>
             </form>
           </Card>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{teams.map(t => (
-            <div key={t.id} className="bg-white border border-green-100 p-4 rounded-lg shadow-sm flex flex-col gap-3">
+            <div key={t.id} className="bg-white border border-green-100 p-4 rounded-lg shadow-sm flex flex-col gap-3 relative group">
                 <div className="flex items-center gap-4">
                     <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-12 h-12 rounded-full shadow-sm object-cover" />
                     <div className="flex-1">
                         <div className="font-bold text-sm text-green-900">{t.name} ({t.shortName || 'N/A'})</div>
                         <div className="text-[10px] text-gray-500 font-bold uppercase">{t.style}</div>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); setDeleteTeamId(t.id); }} className="text-gray-400 hover:text-red-500 p-2"> <Trash2 size={16}/> </button>
                 </div>
                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-green-500" style={{width: `${t.probability*100}%`}}></div></div>
+                
+                {/* BOTONES DE ACCIÓN */}
+                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button onClick={(e) => { e.stopPropagation(); startEdit(t); }} className="bg-white p-2 rounded-full shadow text-blue-600 hover:bg-blue-50 border border-blue-100"><Edit size={14} /></button>
+                     <button onClick={(e) => { e.stopPropagation(); setDeleteTeamId(t.id); }} className="bg-white p-2 rounded-full shadow text-red-400 hover:text-red-600 border border-red-100"><Trash2 size={14} /></button>
+                </div>
             </div>
         ))}</div>
-      </div>
-    );
-  };
-
-  const MatchCardWrapper = ({ match, allMatches, onClick, onDelete }) => {
-    // --- MODIFICADO: Simplificado ---
-    // Si es 'leg1', se renderizará una card doble.
-    // Si es 'leg2', se omitirá (ya se renderizó con 'leg1').
-    // Si es 'single' o 'group', se renderizará una card simple.
-    if (match.matchType === 'leg2') {
-        return null; // Ya se maneja junto con leg1
-    }
-
-    if (match.matchType === 'leg1') {
-      const leg2 = allMatches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg2');
-      return (
-        <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden divide-y divide-green-100">
-          <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
-          {leg2 && ( <MatchCard match={leg2} onClick={() => onClick(leg2.id)} onDelete={onDelete} /> )}
-        </div>
-      );
-    }
-    
-    // Default: 'single', 'group', o cualquier otro tipo
-    return (
-      <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
-        <MatchCard match={match} onClick={() => onClick(match.id)} onDelete={onDelete} />
       </div>
     );
   };
@@ -1111,6 +885,7 @@ export default function App() {
   const MatchesView = () => {
     const [isScheduling, setIsScheduling] = useState(false);
     const [formData, setFormData] = useState({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
+    
     const handleSchedule = async (e) => { 
         e.preventDefault(); 
         if (!user) return;
@@ -1133,29 +908,37 @@ export default function App() {
         setFormData({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
     };
     
-    // --- MODIFICADO: Mostrar partidos de torneo (filtrar solo leg2) ---
     const matchesToDisplay = matches.filter(m => m.matchType !== 'leg2');
 
     return (
       <div>
-         <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-green-900">Calendario (Series)</h2><Button onClick={() => setIsScheduling(!isScheduling)}>{isScheduling ? 'Cancelar' : <><Calendar size={16} /> Programar Serie</>}</Button></div>
+         <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-green-900">Calendario</h2><Button onClick={() => setIsScheduling(!isScheduling)}>{isScheduling ? 'Cancelar' : <><Calendar size={16} /> Programar Amistoso</>}</Button></div>
          {isScheduling && <Card className="p-6 mb-6 shadow-lg animate-in slide-in-from-top-2"><form onSubmit={handleSchedule} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select label="Tipo de Partido" options={[{value:'single', label:'Partido Único'}, {value:'twoLegged', label:'Ida y Vuelta'}]} value={formData.matchType} onChange={e=>setFormData({...formData, matchType: e.target.value})} className="md:col-span-2" />
-            <Select label="Equipo Local (Ida)" options={[{value:'', label:'Local...'}, ...teams.map(t => ({value:t.id, label:t.name}))]} value={formData.teamAId} onChange={e=>setFormData({...formData, teamAId: e.target.value})} />
-            <Select label="Equipo Visitante (Ida)" options={[{value:'', label:'Visita...'}, ...teams.filter(t=>t.id!==formData.teamAId).map(t => ({value:t.id, label:t.name}))]} value={formData.teamBId} onChange={e=>setFormData({...formData, teamBId: e.target.value})} />
+            <Select label="Equipo Local" options={[{value:'', label:'Local...'}, ...teams.map(t => ({value:t.id, label:t.name}))]} value={formData.teamAId} onChange={e=>setFormData({...formData, teamAId: e.target.value})} />
+            <Select label="Equipo Visitante" options={[{value:'', label:'Visita...'}, ...teams.filter(t=>t.id!==formData.teamAId).map(t => ({value:t.id, label:t.name}))]} value={formData.teamBId} onChange={e=>setFormData({...formData, teamBId: e.target.value})} />
             <Input label={formData.matchType === 'single' ? 'Fecha y Hora' : 'Fecha Partido Ida'} type="datetime-local" value={formData.startTime} onChange={e=>setFormData({...formData, startTime: e.target.value})} className={formData.matchType === 'single' ? 'md:col-span-2' : ''} />
             {formData.matchType === 'twoLegged' && ( <Input label="Fecha Partido Vuelta" type="datetime-local" value={formData.startTimeLeg2} onChange={e=>setFormData({...formData, startTimeLeg2: e.target.value})} /> )}
             <label className="flex items-center gap-2 text-sm text-green-700 font-bold md:col-span-2"><input type="checkbox" checked={formData.autoStart} onChange={e=>setFormData({...formData, autoStart: e.target.checked})} className="accent-green-600 w-4 h-4" /> Iniciar partidos automáticamente</label>
             <Button type="submit" className="md:col-span-2">Confirmar</Button>
          </form></Card>}
-         <div className="grid gap-3">{matchesToDisplay.map(m => (
-             <MatchCardWrapper key={m.id} match={m} allMatches={matches} onClick={setSelectedMatchId} onDelete={(id) => setDeleteMatchId(id)} />
-         ))}</div>
+         <div className="grid gap-3">
+            {matchesToDisplay.map(m => (
+                <div key={m.id} className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
+                    <MatchCard match={m} onClick={() => setSelectedMatchId(m.id)} onDelete={(id) => setDeleteMatchId(id)} />
+                    {m.matchType === 'leg1' && matches.find(leg2 => leg2.seriesId === m.seriesId && leg2.matchType === 'leg2') && (
+                        <div className="border-t border-green-100">
+                             <MatchCard match={matches.find(leg2 => leg2.seriesId === m.seriesId && leg2.matchType === 'leg2')} onClick={() => setSelectedMatchId(matches.find(leg2 => leg2.seriesId === m.seriesId && leg2.matchType === 'leg2').id)} onDelete={(id) => setDeleteMatchId(id)} />
+                        </div>
+                    )}
+                </div>
+            ))}
+         </div>
       </div>
     );
   };
   
-  // --- NUEVO: Vista de Torneos ---
+  // --- VISTA TORNEOS ---
   const TournamentsView = ({ tournaments, allTeams, allMatches, user, onDeleteClick }) => {
     const [selectedTournament, setSelectedTournament] = useState(null);
     const [isCreating, setIsCreating] = useState(false);
@@ -1167,15 +950,14 @@ export default function App() {
         await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'tournaments'), {
             name: newTournamentName,
             createdAt: serverTimestamp(),
-            groups: [], // [{ id, name, teams: [], settings: { classifiedSlots: 2 } }]
-            knockout: null // { type: 8, matches: [] }
+            groups: [], 
+            knockout: null
         });
         
         setNewTournamentName("");
         setIsCreating(false);
     };
     
-    // Si un torneo está seleccionado, muestra el detalle
     if (selectedTournament) {
         return (
             <TournamentDetailView 
@@ -1189,7 +971,6 @@ export default function App() {
         );
     }
 
-    // Vista de lista de torneos
     return (
         <div className="animate-in fade-in duration-300">
             <div className="flex justify-between items-center mb-6">
@@ -1214,9 +995,6 @@ export default function App() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tournaments.length === 0 && !isCreating && (
-                    <p className="text-gray-500">No hay torneos creados. ¡Crea uno nuevo!</p>
-                )}
                 {tournaments.map(t => (
                     <div key={t.id} 
                          className="bg-white border border-green-100 p-5 rounded-xl hover:border-green-400 hover:shadow-md transition-all cursor-pointer flex justify-between items-center"
@@ -1241,14 +1019,12 @@ export default function App() {
     );
   };
   
-  // --- NUEVO: Vista de Detalle de Torneo (Componente interno) ---
   const TournamentDetailView = ({ tournament, onBack, user, allTeams, allMatches, onDeleteTournament }) => {
-    const [view, setView] = useState('groups'); // 'groups' or 'knockout'
-    const [isEditMode, setIsEditMode] = useState(true); // --- NUEVO: Modo Edición ---
+    const [view, setView] = useState('groups');
+    const [isEditMode, setIsEditMode] = useState(true);
     
     const [groupForm, setGroupForm] = useState({ name: '', classifiedSlots: 2 });
     const [teamToAdd, setTeamToAdd] = useState({ groupId: null, teamId: '' });
-    // --- MODIFICADO: Añadir jornada al form ---
     const [matchForm, setMatchForm] = useState({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
     const [knockoutSetup, setKnockoutSetup] = useState(tournament.knockout ? tournament.knockout.type : 8);
 
@@ -1268,16 +1044,13 @@ export default function App() {
 
     const handleAddTeamToGroup = async (groupId) => {
         if (!teamToAdd.teamId || !groupId) return;
-        
-        // Encontrar el grupo y añadir el equipo
         const newGroups = tournament.groups.map(g => {
             if (g.id === groupId) {
-                if (g.teams.includes(teamToAdd.teamId)) return g; // Evitar duplicados
+                if (g.teams.includes(teamToAdd.teamId)) return g;
                 return { ...g, teams: [...g.teams, teamToAdd.teamId] };
             }
             return g;
         });
-        
         await updateDoc(docRef, { groups: newGroups });
         setTeamToAdd({ groupId: null, teamId: '' });
     };
@@ -1297,11 +1070,7 @@ export default function App() {
             alert("Completa todos los campos para programar el partido.");
             return;
         }
-        
-        // --- NUEVO: Obtener nombre del grupo ---
         const group = tournament.groups.find(g => g.id === matchForm.groupId);
-
-        // Crear el partido en la colección 'matches'
         await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), {
             teamAId: matchForm.teamAId,
             teamBId: matchForm.teamBId,
@@ -1312,16 +1081,13 @@ export default function App() {
             currentMinute: 0, events: [], period: '1T', 
             addedTime: 0, halftimeCounter: 0, 
             createdAt: serverTimestamp(),
-            // --- Datos del Torneo ---
             tournamentId: tournament.id,
             groupId: matchForm.groupId,
-            groupName: group ? group.name : null, // --- NUEVO ---
-            jornada: matchForm.jornada || null, // --- NUEVO ---
+            groupName: group ? group.name : null,
+            jornada: matchForm.jornada || null,
             seriesId: null,
             matchType: 'group', 
         });
-        
-        // --- MODIFICADO: Resetear jornada ---
         setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
     };
 
@@ -1332,29 +1098,60 @@ export default function App() {
             type: type,
             matches: Array.from({ length: matchesCount }, (_, i) => ({
                 id: `ko-match-${i+1}`,
-                name: `Partido ${i+1}`, // Ej: Cuartos 1
+                name: `Cruce ${i+1}`,
                 teamA: null,
                 teamB: null,
-                matchId: null // ID del partido real
+                matchId: null
             }))
         };
         await updateDoc(docRef, { knockout: newKnockout });
     };
     
-    // --- NUEVO: Actualizar enfrentamiento de eliminatoria ---
+    // --- NUEVO: CREAR PARTIDO DE ELIMINATORIA ---
+    const handleCreateKnockoutMatch = async (koMatchId) => {
+        const koMatch = tournament.knockout.matches.find(m => m.id === koMatchId);
+        if(!koMatch || !koMatch.teamA || !koMatch.teamB) {
+            alert("Selecciona dos equipos antes de crear el partido.");
+            return;
+        }
+        
+        // Crear doc en 'matches'
+        const matchRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), {
+            teamAId: koMatch.teamA,
+            teamBId: koMatch.teamB,
+            startTime: new Date().toISOString(), // Fecha actual por defecto, o pedir input
+            status: 'scheduled',
+            autoStart: true,
+            scoreA: 0, scoreB: 0,
+            currentMinute: 0, events: [], period: '1T', 
+            addedTime: 0, halftimeCounter: 0, 
+            createdAt: serverTimestamp(),
+            tournamentId: tournament.id,
+            groupId: null,
+            groupName: null,
+            jornada: null,
+            stage: koMatch.name, // "Cruce 1", "Cuartos", etc
+            seriesId: null,
+            matchType: 'knockout', 
+        });
+
+        // Actualizar referencia en el torneo
+        const newMatches = tournament.knockout.matches.map(m => {
+            if (m.id === koMatchId) return { ...m, matchId: matchRef.id };
+            return m;
+        });
+        await updateDoc(docRef, { knockout: { ...tournament.knockout, matches: newMatches } });
+    };
+
     const handleUpdateKnockoutMatch = async (koMatchId, teamSide, teamId) => {
         if (!tournament.knockout) return;
-        
         const newMatches = tournament.knockout.matches.map(m => {
             if (m.id === koMatchId) {
-                return { ...m, [teamSide]: teamId || null }; // Poner null si se selecciona 'A definir'
+                return { ...m, [teamSide]: teamId || null };
             }
             return m;
         });
-        
-        const newKnockout = { ...tournament.knockout, matches: newMatches };
-        
-        await updateDoc(docRef, { knockout: newKnockout });
+        await updateDoc(docRef, { knockout: { ...tournament.knockout, matches: newMatches } });
     };
 
     const tournamentMatches = allMatches.filter(m => m.tournamentId === tournament.id);
@@ -1365,13 +1162,10 @@ export default function App() {
 
     return (
         <div className="animate-in fade-in duration-300">
-            {/* Header */}
             <div className="flex justify-between items-center mb-6">
                 <Button variant="secondary" onClick={onBack}>
                     <ArrowLeft size={16} /> Volver a Torneos
                 </Button>
-                
-                {/* --- NUEVO: Toggle Edición/Visual --- */}
                 <ToggleSwitch 
                     isEnabled={isEditMode}
                     onToggle={() => setIsEditMode(!isEditMode)}
@@ -1380,9 +1174,7 @@ export default function App() {
                     IconLeft={Eye}
                     IconRight={Edit}
                 />
-                
                 <h2 className="text-2xl font-bold text-green-900 hidden md:block">{tournament.name}</h2>
-                
                 {isEditMode && (
                     <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
                         <Trash2 size={16} /> Borrar Torneo
@@ -1390,7 +1182,6 @@ export default function App() {
                 )}
             </div>
             
-            {/* Tabs */}
             <div className="flex gap-2 mb-6 border-b border-green-200">
                 <button onClick={() => setView('groups')} className={`pb-2 px-4 text-sm font-bold ${view === 'groups' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500'}`}>
                     Fase de Grupos
@@ -1400,10 +1191,8 @@ export default function App() {
                 </button>
             </div>
 
-            {/* --- VISTA DE GRUPOS --- */}
             {view === 'groups' && (
                 <div className="space-y-8">
-                    {/* Formulario Añadir Grupo (Solo Modo Edición) */}
                     {isEditMode && (
                         <Card className="p-4 bg-gray-50">
                             <h3 className="font-bold text-green-800 mb-2">Añadir Nuevo Grupo</h3>
@@ -1430,7 +1219,6 @@ export default function App() {
                         </Card>
                     )}
                     
-                    {/* Lista de Grupos */}
                     {tournament.groups.map(group => {
                         const standings = calculateStandings(group.id, group.teams, allTeams, tournamentMatches);
                         const groupMatches = tournamentMatches.filter(m => m.groupId === group.id).reverse();
@@ -1441,43 +1229,30 @@ export default function App() {
                             <Card key={group.id} className="p-6">
                                 <h3 className="text-xl font-bold text-red-700 mb-4">{group.name}</h3>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    {/* Izquierda: Tabla y Equipos */}
                                     <div>
                                         <h4 className="font-bold text-green-800 mb-3">Tabla de Posiciones</h4>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full text-sm divide-y divide-gray-200">
                                                 <thead className="bg-green-50">
                                                     <tr>
-                                                        <th className="px-2 py-2 text-left text-xs font-bold text-green-700 uppercase tracking-wider">#</th>
-                                                        <th className="px-2 py-2 text-left text-xs font-bold text-green-700 uppercase tracking-wider">Equipo</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">PJ</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">G</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">E</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">P</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">DG</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">Pts</th>
+                                                        <th className="px-2 py-2 text-left text-xs font-bold text-green-700 uppercase">#</th>
+                                                        <th className="px-2 py-2 text-left text-xs font-bold text-green-700 uppercase">Equipo</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase">PJ</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase">Pts</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="bg-white divide-y divide-gray-100">
                                                     {standings.map((t, index) => (
                                                         <tr key={t.id} className={index < group.settings.classifiedSlots ? 'bg-green-50' : ''}>
-                                                            <td className="px-2 py-2 whitespace-nowrap text-center">
-                                                                {index + 1}
-                                                                {index < group.settings.classifiedSlots && <CheckSquare size={14} className="text-green-600 inline-block ml-1" />}
-                                                            </td>
+                                                            <td className="px-2 py-2 whitespace-nowrap text-center">{index + 1}</td>
                                                             <td className="px-2 py-2 whitespace-nowrap font-medium text-green-900 flex items-center gap-2">
                                                                 <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-5 h-5 rounded-full object-cover" />
                                                                 {t.name}
-                                                                {/* --- MODIFICADO: Ocultar en modo visual --- */}
                                                                 {isEditMode && (
                                                                     <Trash2 size={14} className="text-gray-400 hover:text-red-600 cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
                                                                 )}
                                                             </td>
                                                             <td className="px-2 py-2 whitespace-nowrap text-center">{t.P}</td>
-                                                            <td className="px-2 py-2 whitespace-nowrap text-center">{t.W}</td>
-                                                            <td className="px-2 py-2 whitespace-nowrap text-center">{t.D}</td>
-                                                            <td className="px-2 py-2 whitespace-nowrap text-center">{t.L}</td>
-                                                            <td className="px-2 py-2 whitespace-nowrap text-center">{t.GD > 0 ? `+${t.GD}` : t.GD}</td>
                                                             <td className="px-2 py-2 whitespace-nowrap text-center font-bold">{t.Pts}</td>
                                                         </tr>
                                                     ))}
@@ -1485,7 +1260,6 @@ export default function App() {
                                             </table>
                                         </div>
 
-                                        {/* Añadir Equipo (Solo Modo Edición) */}
                                         {isEditMode && (
                                             <div className="flex gap-2 mt-4">
                                                 <SmallSelect
@@ -1498,9 +1272,7 @@ export default function App() {
                                         )}
                                     </div>
 
-                                    {/* Derecha: Partidos */}
                                     <div className={isEditMode ? "border-l border-green-100 pl-8" : ""}>
-                                        {/* Formulario Programar Partido (Solo Modo Edición) */}
                                         {isEditMode && (
                                             <>
                                                 <h4 className="font-bold text-green-800 mb-3">Programar Partido</h4>
@@ -1508,7 +1280,6 @@ export default function App() {
                                                     <SmallSelect options={[{ value: '', label: 'Local...' }, ...teamsInGroup.map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamAId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamAId: e.target.value, teamBId: e.target.value === matchForm.teamBId ? '' : matchForm.teamBId})} />
                                                     <SmallSelect options={[{ value: '', label: 'Visitante...' }, ...teamsInGroup.filter(t => t.id !== matchForm.teamAId).map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamBId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamBId: e.target.value})} />
                                                     <SmallInput type="datetime-local" value={matchForm.groupId === group.id ? matchForm.startTime : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, startTime: e.target.value})} />
-                                                    {/* --- NUEVO: Input Jornada --- */}
                                                     <SmallInput type="number" min="1" placeholder="Jornada #" value={matchForm.groupId === group.id ? matchForm.jornada : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, jornada: e.target.value})} />
                                                     <Button onClick={handleScheduleMatch} className="w-full" disabled={matchForm.groupId !== group.id}><Calendar size={16}/> Programar</Button>
                                                 </div>
@@ -1517,15 +1288,18 @@ export default function App() {
                                         
                                         <h4 className="font-bold text-green-800 mt-6 mb-3">Partidos del Grupo</h4>
                                         <div className={`space-y-2 ${isEditMode ? 'max-h-48 overflow-y-auto' : ''}`}>
-                                            {groupMatches.length === 0 && <p className="text-xs text-gray-500">No hay partidos programados para este grupo.</p>}
+                                            {groupMatches.length === 0 && <p className="text-xs text-gray-500">No hay partidos programados.</p>}
                                             {groupMatches.map(m => {
                                                 const tA = allTeams.find(t => t.id === m.teamAId);
                                                 const tB = allTeams.find(t => t.id === m.teamBId);
                                                 return (
                                                     <div key={m.id} className="text-sm p-2 bg-white border border-gray-100 rounded flex justify-between items-center">
-                                                        <div className="flex items-center gap-2">
-                                                            {m.jornada && <span className="text-xs font-bold text-gray-400">J{m.jornada}</span>}
-                                                            <span className="font-bold">{tA?.shortName || '?'}</span> {m.scoreA} - {m.scoreB} <span className="font-bold">{tB?.shortName || '?'}</span>
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-2">
+                                                                {m.jornada && <span className="text-xs font-bold text-gray-400">J{m.jornada}</span>}
+                                                                <span className="font-bold">{tA?.shortName || '?'}</span> {m.scoreA} - {m.scoreB} <span className="font-bold">{tB?.shortName || '?'}</span>
+                                                            </div>
+                                                            <span className="text-[10px] text-gray-400">{formatDate(m.startTime)}</span>
                                                         </div>
                                                         <Badge status={m.status} period={m.period} />
                                                     </div>
@@ -1540,10 +1314,8 @@ export default function App() {
                 </div>
             )}
             
-            {/* --- VISTA DE ELIMINATORIA --- */}
             {view === 'knockout' && (
                 <div className="space-y-6">
-                    {/* Formulario Configurar (Solo Modo Edición) */}
                     {isEditMode && (
                         <Card className="p-6">
                             <h3 className="font-bold text-green-800 mb-3">Configurar Eliminatoria</h3>
@@ -1567,40 +1339,63 @@ export default function App() {
 
                     {tournament.knockout && (
                         <Card className="p-6">
-                             <h3 className="text-xl font-bold text-red-700 mb-4">Cuadro de {tournament.knockout.type} Equipos</h3>
+                             <h3 className="text-xl font-bold text-red-700 mb-4">Cuadro Final</h3>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {tournament.knockout.matches.map(koMatch => (
-                                    <div key={koMatch.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                        <div className="font-bold text-sm text-green-800 mb-2">{koMatch.name}</div>
+                                {tournament.knockout.matches.map(koMatch => {
+                                    const linkedMatch = allMatches.find(m => m.id === koMatch.matchId);
+                                    
+                                    return (
+                                    <div key={koMatch.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm relative">
+                                        <div className="font-bold text-xs text-green-600 mb-2 uppercase tracking-wide flex justify-between">
+                                            <span>{koMatch.name}</span>
+                                            {linkedMatch && <Badge status={linkedMatch.status} />}
+                                        </div>
                                         
-                                        {/* --- MODIFICADO: Renderizado Condicional Edición/Visual --- */}
-                                        {isEditMode ? (
+                                        {isEditMode && !linkedMatch ? (
                                             <div className="space-y-2">
                                                 <SmallSelect 
                                                     options={teamOptions} 
                                                     value={koMatch.teamA || ''}
                                                     onChange={(e) => handleUpdateKnockoutMatch(koMatch.id, 'teamA', e.target.value)}
                                                 />
+                                                <div className="text-center text-xs font-bold text-gray-400">VS</div>
                                                 <SmallSelect 
                                                     options={teamOptions}
                                                     value={koMatch.teamB || ''}
                                                     onChange={(e) => handleUpdateKnockoutMatch(koMatch.id, 'teamB', e.target.value)}
                                                 />
+                                                <Button 
+                                                    className="w-full mt-2" 
+                                                    disabled={!koMatch.teamA || !koMatch.teamB}
+                                                    onClick={() => handleCreateKnockoutMatch(koMatch.id)}
+                                                >
+                                                    <Calendar size={14} /> Crear Partido
+                                                </Button>
                                             </div>
                                         ) : (
-                                            <div className="flex items-center justify-between p-2 bg-white rounded text-sm">
-                                                <span className={!koMatch.teamA ? 'text-gray-400' : 'font-medium'}>
-                                                    {koMatch.teamA ? (allTeams.find(t => t.id === koMatch.teamA)?.name || 'Equipo A') : 'A definir'}
-                                                </span>
-                                                <span className="font-bold text-gray-400 text-xs">vs</span>
-                                                <span className={!koMatch.teamB ? 'text-gray-400' : 'font-medium'}>
-                                                    {koMatch.teamB ? (allTeams.find(t => t.id === koMatch.teamB)?.name || 'Equipo B') : 'A definir'}
-                                                </span>
+                                            <div className="space-y-3">
+                                                {linkedMatch ? (
+                                                    <div className="flex flex-col items-center gap-2 p-2 bg-white rounded border border-gray-100">
+                                                        <div className="flex justify-between w-full items-center">
+                                                            <span className="font-bold text-sm">{allTeams.find(t=>t.id===koMatch.teamA)?.name}</span>
+                                                            <span className="font-bold text-lg">{linkedMatch.scoreA}</span>
+                                                        </div>
+                                                        <div className="flex justify-between w-full items-center">
+                                                            <span className="font-bold text-sm">{allTeams.find(t=>t.id===koMatch.teamB)?.name}</span>
+                                                            <span className="font-bold text-lg">{linkedMatch.scoreB}</span>
+                                                        </div>
+                                                        <div className="text-[10px] text-gray-400 mt-1">{formatDate(linkedMatch.startTime)}</div>
+                                                    </div>
+                                                ) : (
+                                                     <div className="flex flex-col gap-2 p-2 bg-white rounded border border-gray-100 opacity-60">
+                                                        <div className="text-sm font-medium text-gray-500">{allTeams.find(t=>t.id===koMatch.teamA)?.name || '...'}</div>
+                                                        <div className="text-sm font-medium text-gray-500">{allTeams.find(t=>t.id===koMatch.teamB)?.name || '...'}</div>
+                                                     </div>
+                                                )}
                                             </div>
                                         )}
-                                        {/* Aquí se podría añadir lógica para vincular partidos */}
                                     </div>
-                                ))}
+                                )})}
                              </div>
                         </Card>
                     )}
@@ -1610,16 +1405,31 @@ export default function App() {
     );
   };
 
+  const DashboardView = () => {
+    const liveMatches = matches.filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'penalties');
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="relative rounded-2xl overflow-hidden bg-green-800 p-8 shadow-xl text-white mb-8 border-b-4 border-red-600">
+            <div className="relative z-10">
+                <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2"><Crown size={18} /> Gestor Deportivo</div>
+                <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-red-500 bg-white px-2 skew-x-[-10deg] inline-block">REYES</span></h2>
+            </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="p-5 border-l-4 border-l-red-500 bg-white shadow-sm">
+             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">En Juego</p><p className="text-3xl font-bold text-green-900">{liveMatches.length}</p></div>
+          </Card>
+          <Card className="p-5 border-l-4 border-l-green-600 bg-white shadow-sm">
+             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Programados</p><p className="text-3xl font-bold text-green-900">{matches.filter(m => m.status === 'scheduled').length}</p></div>
+          </Card>
+          <Card className="p-5 border-l-4 border-l-yellow-500 bg-white shadow-sm">
+             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Clubes</p><p className="text-3xl font-bold text-green-900">{teams.length}</p></div>
+          </Card>
+        </div>
+      </div>
+    );
+  };
 
-  if (!user) return (
-    <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center text-green-800 font-sans p-4">
-      <div className="animate-spin text-green-600 mb-4"><Activity size={32} /></div>
-      <div className="font-bold text-lg animate-pulse">Cargando Sistema de Táctica...</div>
-      <div className="text-sm text-green-600 mt-2">Autenticando con Firebase</div>
-    </div>
-  );
-  
-  // --- MODIFICADO: Menú y Renderizado Principal ---
   const navItems = [
     { id: 'dashboard', icon: Activity, label: 'Inicio' },
     { id: 'tournaments', icon: Shield, label: 'Torneos' }, 
@@ -1627,12 +1437,19 @@ export default function App() {
     { id: 'matches', icon: Calendar, label: 'Partidos' }
   ];
 
+  if (!user) return (
+    <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center text-green-800 font-sans p-4">
+      <div className="animate-spin text-green-600 mb-4"><Activity size={32} /></div>
+      <div className="font-bold text-lg animate-pulse">Cargando Sistema...</div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-lime-50 text-green-900 font-sans pb-20 md:pb-0 selection:bg-green-200">
       <ConfirmModal 
         isOpen={!!deleteTeamId} 
         title="¿Eliminar Club?" 
-        message="Esta acción no se puede deshacer y borrará todos los datos asociados al equipo."
+        message="Esta acción no se puede deshacer y borrará todos los datos asociados."
         onClose={() => setDeleteTeamId(null)}
         onConfirm={async () => {
             if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', deleteTeamId));
@@ -1641,17 +1458,16 @@ export default function App() {
       <ConfirmModal 
         isOpen={!!deleteMatchId} 
         title="¿Borrar Partido?" 
-        message="El partido será eliminado del historial permanentemente. Si es parte de una serie de Ida/Vuelta, el otro partido NO será borrado."
+        message="El partido será eliminado permanentemente."
         onClose={() => setDeleteMatchId(null)}
         onConfirm={async () => {
             if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', deleteMatchId));
         }}
       />
-      {/* --- NUEVO: Modal Borrar Torneo --- */}
       <ConfirmModal 
         isOpen={!!deleteTournamentId} 
         title="¿Eliminar Torneo?" 
-        message="Esta acción borrará el torneo, sus grupos y configuración. LOS PARTIDOS DEL TORNEO NO SERÁN BORRADOS de la lista general."
+        message="Esta acción borrará el torneo y su estructura. LOS PARTIDOS NO SE BORRAN."
         onClose={() => setDeleteTournamentId(null)}
         onConfirm={async () => {
             if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', deleteTournamentId));
@@ -1660,12 +1476,10 @@ export default function App() {
 
       <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-green-800 flex-col p-6 z-50 shadow-2xl border-r border-green-700">
         <div className="flex flex-col items-center mb-10 text-white border-b border-green-700 pb-6">
-          <img 
-              src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-              className="w-24 h-24 object-contain"
-              alt="Logo"
-          />
-          <h1 className="text-center font-black italic text-lg leading-tight tracking-tight">COPA DE LOS <br/><span className="text-red-500 bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES 2026</span></h1>
+          <div className="bg-white p-2 rounded-full mb-3 shadow-lg">
+            <Trophy className="text-green-700" size={32} />
+          </div>
+          <h1 className="text-center font-black italic text-lg leading-tight tracking-tight">COPA DE LOS <br/><span className="text-red-500 bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES</span></h1>
         </div>
         <nav className="space-y-2 flex-1">
           {navItems.map(item => (
@@ -1674,14 +1488,9 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.1 Edición</div>
       </div>
       <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
-         <div className="flex items-center gap-2 text-white font-black italic"><img 
-              src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-              className="w-20 h-20 object-contain"
-              alt="Logo"
-            /> <span className="text-3xl">COPA REYES</span></div>
+         <div className="flex items-center gap-2 text-white font-black italic"><Trophy /> <span className="text-xl">COPA REYES</span></div>
          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">{mobileMenuOpen ? <X /> : <Menu />}</button>
       </div>
       {mobileMenuOpen && (
