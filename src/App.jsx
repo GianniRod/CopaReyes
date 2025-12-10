@@ -54,20 +54,12 @@ import {
   Settings
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN FIREBASE (LEER DESDE VARIABLES DE ENTORNO VERCEL) ---
-const firebaseConfig = {
-    apiKey: import.meta.env.VITE_API_KEY,
-    authDomain: import.meta.env.VITE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_APP_ID
-};
-
+// --- CONFIGURACIÓN FIREBASE CORREGIDA ---
+const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 
 // --- UTILIDADES ---
@@ -365,41 +357,40 @@ export default function App() {
   // Auth
   useEffect(() => {
     const initAuth = async () => {
-        try {
-            await signInAnonymously(auth); 
-        } catch (e) {
-            console.error("Error al iniciar sesión anónima:", e);
-        }
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
-    });
+    const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
 
-  // Data Fetching
+  // Data Fetching - AHORA USA 'public/data' PARA SER UNIVERSAL
   useEffect(() => {
     if (!user) return;
     
-    const userTeamsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'teams');
-    const userMatchesPath = collection(db, 'artifacts', appId, 'users', user.uid, 'matches');
-    const userTournamentsPath = collection(db, 'artifacts', appId, 'users', user.uid, 'tournaments'); 
+    // CAMBIO: Usamos 'public/data' en lugar de 'users/uid' para que todos vean lo mismo
+    const teamsPath = collection(db, 'artifacts', appId, 'public', 'data', 'teams');
+    const matchesPath = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
+    const tournamentsPath = collection(db, 'artifacts', appId, 'public', 'data', 'tournaments'); 
 
     const unsubTeams = onSnapshot(
-        query(userTeamsPath, orderBy('name')), 
+        query(teamsPath, orderBy('name')), 
         (snap) => setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
         (err) => console.error("Error fetching teams:", err)
     );
 
     const unsubMatches = onSnapshot(
-        query(userMatchesPath, orderBy('startTime', 'desc')), 
+        query(matchesPath, orderBy('startTime', 'desc')), 
         (snap) => setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
         (err) => console.error("Error fetching matches:", err)
     );
 
     const unsubTournaments = onSnapshot(
-        query(userTournamentsPath, orderBy('createdAt', 'desc')),
+        query(tournamentsPath, orderBy('createdAt', 'desc')),
         (snap) => setTournaments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
         (err) => console.error("Error fetching tournaments:", err)
     );
@@ -441,7 +432,8 @@ export default function App() {
     if (match.matchType === 'leg2') startText = '¡Comienza el partido de VUELTA!';
     if (match.groupId) startText = `¡Comienza el partido del ${match.groupName || 'Grupo'}!`; 
 
-    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), {
+    // CAMBIO: public/data
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), {
       status: 'live', period: '1T', currentMinute: 0, addedTime: Math.floor(Math.random()*4)+1, halftimeCounter: 0, scoreA: 0, scoreB: 0,
       events: [{ type: 'whistle', minute: 0, text: startText }],
       stats: initialStats, lineups: { teamA: rosterA, teamB: rosterB }
@@ -462,7 +454,8 @@ export default function App() {
       } else {
         updates = { halftimeCounter: newCounter };
       }
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), updates);
+      // CAMBIO: public/data
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
       return;
     }
 
@@ -513,7 +506,8 @@ export default function App() {
         }
       }
       
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), updates);
+      // CAMBIO: public/data
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
       return;
     }
 
@@ -571,7 +565,8 @@ export default function App() {
     }
     updates.events = newEvents;
     updates.stats = stats;
-    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), updates);
+    // CAMBIO: public/data
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
   };
 
   const updateMatchScoreManual = async (matchId, team, delta) => {
@@ -582,7 +577,8 @@ export default function App() {
     if (team === 'A') updateData.scoreA = Math.max(0, match.scoreA + delta);
     if (team === 'B') updateData.scoreB = Math.max(0, match.scoreB + delta);
     updateData.events = [...match.events, { type: 'manual', minute: match.currentMinute || 0, text: `VAR: Ajuste manual de marcador` }];
-    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', matchId), updateData);
+    // CAMBIO: public/data
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', matchId), updateData);
   };
 
   const handlePenaltyKick = async (match) => {
@@ -593,7 +589,8 @@ export default function App() {
     const currentShootout = JSON.parse(JSON.stringify(match.penaltyShootout));
     const newEvents = [...match.events];
     currentShootout.isKicking = true;
-    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { penaltyShootout: currentShootout });
+    // CAMBIO: public/data
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), { penaltyShootout: currentShootout });
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
     const kickerSide = currentShootout.kicker;
     const kickerTeam = (kickerSide === 'A') ? teamA : teamB;
@@ -634,7 +631,8 @@ export default function App() {
       const winnerTeam = (currentShootout.winner === 'A') ? teamA : teamB;
       newEvents.push({ type: 'whistle', minute: 'PEN', text: `¡${winnerTeam.name} GANA LA TANDA DE PENALES!` });
     }
-    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), {
+    // CAMBIO: public/data
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), {
       status: newStatus,
       penaltyShootout: currentShootout,
       events: newEvents
@@ -644,7 +642,8 @@ export default function App() {
   // --- NUEVO: Manejador para guardar fecha editada ---
   const handleUpdateMatchDate = async (newDate) => {
       if (!user || !editDateMatchId || !newDate) return;
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', editDateMatchId), {
+      // CAMBIO: public/data
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', editDateMatchId), {
           startTime: newDate
       });
       setEditDateMatchId(null);
@@ -916,7 +915,7 @@ export default function App() {
                           {match.status !== 'finished' && (
                             <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
                                 {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
-                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
+                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
                                 <div className="flex gap-2 mt-2">
                                     <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
                                     <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
@@ -1106,10 +1105,12 @@ export default function App() {
         if (!user) return; 
         
         if (editingTeamId) {
-            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', editingTeamId), formData);
+            // CAMBIO: public/data
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teams', editingTeamId), formData);
         } else {
             const roster = generateRoster();
-            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); 
+            // CAMBIO: public/data
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); 
         }
         
         resetForm();
@@ -1212,12 +1213,14 @@ export default function App() {
         const baseData = { status: 'scheduled', scoreA: 0, scoreB: 0, currentMinute: 0, events: [], period: '1T', addedTime: 0, halftimeCounter: 0, createdAt: serverTimestamp(), autoStart: formData.autoStart, tournamentId: null, groupId: null, groupName: null, jornada: null, seriesId: null, matchType: 'single' };
         if (formData.matchType === 'single') {
             if (!formData.teamAId || !formData.teamBId || !formData.startTime) return;
-            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime });
+            // CAMBIO: public/data
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'matches'), { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime });
         } else {
             if (!formData.teamAId || !formData.teamBId || !formData.startTime || !formData.startTimeLeg2) return;
             const seriesId = `series-${crypto.randomUUID()}`;
             const batch = writeBatch(db);
-            const matchesCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'matches');
+            // CAMBIO: public/data
+            const matchesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
             const leg1Ref = doc(matchesCollection);
             batch.set(leg1Ref, { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime, matchType: 'leg1', seriesId: seriesId });
             const leg2Ref = doc(matchesCollection);
@@ -1264,7 +1267,8 @@ export default function App() {
     const handleCreateTournament = async () => {
         if (!user || !newTournamentName.trim()) return;
         
-        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'tournaments'), {
+        // CAMBIO: public/data
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tournaments'), {
             name: newTournamentName,
             createdAt: serverTimestamp(),
             groups: [], 
@@ -1347,12 +1351,12 @@ export default function App() {
     const [teamToAdd, setTeamToAdd] = useState({ groupId: null, teamId: '' });
     const [matchForm, setMatchForm] = useState({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
     
-    // --- NUEVO: Estado para configurar eliminatorias ---
     const [knockoutSetup, setKnockoutSetup] = useState(tournament.knockout ? tournament.knockout.type : 8);
-    const [thirdPlace, setThirdPlace] = useState(false); // Checkbox 3er puesto
-    const [koMatchDates, setKoMatchDates] = useState({}); // Para guardar fechas temporales al programar
+    const [thirdPlace, setThirdPlace] = useState(false); 
+    const [koMatchDates, setKoMatchDates] = useState({}); 
 
-    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', tournament.id);
+    // CAMBIO: public/data
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', tournament.id);
 
     const handleAddGroup = async () => {
         if (!groupForm.name.trim()) return;
@@ -1399,7 +1403,8 @@ export default function App() {
         
         const group = tournament.groups.find(g => g.id === matchForm.groupId);
 
-        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), {
+        // CAMBIO: public/data
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'matches'), {
             teamAId: matchForm.teamAId,
             teamBId: matchForm.teamBId,
             startTime: matchForm.startTime,
@@ -1420,22 +1425,17 @@ export default function App() {
         setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
     };
 
-    // --- NUEVO: Generar Bracket Completo ---
     const handleSetupKnockout = async () => {
         const type = parseInt(knockoutSetup, 10);
-        let rounds = Math.log2(type); // 8 -> 3 rondas, 4 -> 2 rondas
+        let rounds = Math.log2(type); 
         let matches = [];
         let matchIdCounter = 1;
 
-        // Generar rondas sucesivas
         for (let r = 0; r < rounds; r++) {
-            // Ronda 0 = Cuartos (si 8), Semis (si 4)
-            // Número de partidos en esta ronda
             const matchesInRound = type / Math.pow(2, r + 1);
             
             for (let m = 0; m < matchesInRound; m++) {
                 let name = "";
-                // Nombrado inteligente
                 if (matchesInRound === 8) name = `Octavos ${m+1}`;
                 else if (matchesInRound === 4) name = `Cuartos ${m+1}`;
                 else if (matchesInRound === 2) name = `Semifinal ${m+1}`;
@@ -1444,7 +1444,7 @@ export default function App() {
                 matches.push({
                     id: `ko-m-${matchIdCounter}`,
                     name: name,
-                    round: r, // 0 es primera ronda
+                    round: r, 
                     teamA: null,
                     teamB: null,
                     matchId: null 
@@ -1453,12 +1453,11 @@ export default function App() {
             }
         }
 
-        // --- Agregar 3er Puesto si se seleccionó ---
         if (thirdPlace) {
             matches.push({
                 id: `ko-m-3rd`,
                 name: '3er Puesto',
-                round: 99, // Identificador especial
+                round: 99, 
                 teamA: null,
                 teamB: null,
                 matchId: null
@@ -1487,7 +1486,6 @@ export default function App() {
         await updateDoc(docRef, { knockout: newKnockout });
     };
 
-    // --- NUEVO: Crear partido con fecha específica ---
     const handleCreateKnockoutMatch = async (koMatch) => {
         if (!koMatch.teamA || !koMatch.teamB) {
             alert("Selecciona ambos equipos para programar el partido.");
@@ -1500,11 +1498,11 @@ export default function App() {
             return;
         }
 
-        // Crear partido real
-        const matchRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matches'), {
+        // CAMBIO: public/data
+        const matchRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'matches'), {
             teamAId: koMatch.teamA,
             teamBId: koMatch.teamB,
-            startTime: date, // Usar la fecha seleccionada
+            startTime: date, 
             status: 'scheduled',
             autoStart: true,
             scoreA: 0, scoreB: 0,
@@ -1514,13 +1512,12 @@ export default function App() {
             tournamentId: tournament.id,
             groupId: null,
             groupName: null,
-            stageName: koMatch.name, // Instancia (Cuartos, Semis, etc)
+            stageName: koMatch.name, 
             jornada: null,
             seriesId: null,
             matchType: 'knockout', 
         });
 
-        // Vincular ID al bracket
         const newMatches = tournament.knockout.matches.map(m => {
             if (m.id === koMatch.id) {
                 return { ...m, matchId: matchRef.id };
@@ -1735,7 +1732,6 @@ export default function App() {
                                     </div>
                                     <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
                                 </div>
-                                {/* --- NUEVO: Checkbox 3er Puesto --- */}
                                 <label className="flex items-center gap-2 text-sm text-green-700 font-bold mt-2">
                                     <input 
                                         type="checkbox" 
@@ -1754,7 +1750,6 @@ export default function App() {
                              <h3 className="text-xl font-bold text-red-700 mb-4">Cuadro de Eliminatoria</h3>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {tournament.knockout.matches.map(koMatch => {
-                                    // Buscar partido real si existe
                                     const linkedMatch = koMatch.matchId ? allMatches.find(m => m.id === koMatch.matchId) : null;
                                     const teamAObj = allTeams.find(t => t.id === koMatch.teamA);
                                     const teamBObj = allTeams.find(t => t.id === koMatch.teamB);
@@ -1770,7 +1765,6 @@ export default function App() {
                                                 )}
                                             </div>
                                             
-                                            {/* --- MODO EDICIÓN: Selectores y Fecha --- */}
                                             {isEditMode && !linkedMatch ? (
                                                 <div className="space-y-2">
                                                     <SmallSelect 
@@ -1784,7 +1778,6 @@ export default function App() {
                                                         onChange={(e) => handleUpdateKnockoutMatch(koMatch.id, 'teamB', e.target.value)}
                                                     />
                                                     
-                                                    {/* --- NUEVO: Input de fecha para eliminatoria --- */}
                                                     {koMatch.teamA && koMatch.teamB && (
                                                         <>
                                                             <div className="pt-2">
@@ -1802,7 +1795,6 @@ export default function App() {
                                                     )}
                                                 </div>
                                             ) : (
-                                                // --- MODO VISUAL O PARTIDO YA CREADO ---
                                                 <div className="bg-white rounded border border-gray-100 p-2">
                                                     {linkedMatch && (
                                                         <div className="text-[10px] text-center text-gray-500 mb-1 border-b border-gray-50 pb-1">
@@ -1821,7 +1813,6 @@ export default function App() {
                                                         </span>
                                                         {linkedMatch && <span className="font-bold text-lg">{linkedMatch.scoreB}</span>}
                                                     </div>
-                                                    {/* Mostrar ganador de penales si aplica */}
                                                     {linkedMatch?.penaltyShootout?.winner && (
                                                         <div className="text-xs text-blue-600 font-bold mt-1 text-center">
                                                             Gana {linkedMatch.penaltyShootout.winner === 'A' ? teamAObj?.shortName : teamBObj?.shortName} en Penales
@@ -1868,7 +1859,7 @@ export default function App() {
         message="Esta acción no se puede deshacer y borrará todos los datos asociados al equipo."
         onClose={() => setDeleteTeamId(null)}
         onConfirm={async () => {
-            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'teams', deleteTeamId));
+            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teams', deleteTeamId));
         }}
       />
       <ConfirmModal 
@@ -1877,7 +1868,7 @@ export default function App() {
         message="El partido será eliminado del historial permanentemente. Si es parte de una serie de Ida/Vuelta, el otro partido NO será borrado."
         onClose={() => setDeleteMatchId(null)}
         onConfirm={async () => {
-            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'matches', deleteMatchId));
+            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', deleteMatchId));
         }}
       />
       <ConfirmModal 
@@ -1886,10 +1877,9 @@ export default function App() {
         message="Esta acción borrará el torneo, sus grupos y configuración. LOS PARTIDOS DEL TORNEO NO SERÁN BORRADOS de la lista general."
         onClose={() => setDeleteTournamentId(null)}
         onConfirm={async () => {
-            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tournaments', deleteTournamentId));
+            if(user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', deleteTournamentId));
         }}
       />
-      {/* --- NUEVO: Modal Editar Fecha --- */}
       <EditDateModal 
         isOpen={!!editDateMatchId} 
         currentDate={editDateCurrent}
