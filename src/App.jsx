@@ -59,7 +59,9 @@ import {
   RotateCcw
 } from 'lucide-react';
 
-
+// --- CONFIGURACIÓN FIREBASE ---
+/* SI VAS A SUBIR ESTO A GITHUB/VERCEL, DESCOMENTA ESTE BLOQUE Y COMENTA EL SIGUIENTE:
+   
    const firebaseConfig = {
        apiKey: import.meta.env.VITE_API_KEY,
        authDomain: import.meta.env.VITE_AUTH_DOMAIN,
@@ -69,8 +71,11 @@ import {
        appId: import.meta.env.VITE_APP_ID
    };
    const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
+*/
 
-
+// CONFIGURACIÓN PARA EL EDITOR ACTUAL (NO BORRAR SI LO USAS AQUÍ):
+const firebaseConfig = JSON.parse(__firebase_config);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -127,7 +132,6 @@ const simulateQuickMatch = (probA, probB, startMinute = 0, currentScoreA = 0, cu
 
     for (let m = startMinute; m < 90; m++) {
         // AJUSTE EXTREMO 1: Diferencia masiva en generación de juego
-        // Si probA es 0.8 y probB es 0.2, A tendrá 4 veces mas chances de atacar
         let attackA = Math.pow(probA, 2); 
         let attackB = Math.pow(probB, 2);
         
@@ -139,8 +143,7 @@ const simulateQuickMatch = (probA, probB, startMinute = 0, currentScoreA = 0, cu
             const diff = isTeamA ? probA - probB : probB - probA;
             
             // AJUSTE EXTREMO 2: Conversión letal para el fuerte
-            // Si la diferencia es grande, la chance de gol se dispara
-            let goalChance = baseGoalChance + (diff * 0.45); // Aumentado drásticamente
+            let goalChance = baseGoalChance + (diff * 0.45); 
             
             if (Math.random() < Math.max(0.005, goalChance)) {
                 if (isTeamA) sA++; else sB++;
@@ -967,7 +970,7 @@ export default function App() {
                   
                   <div className="flex justify-between items-center max-w-4xl mx-auto relative z-10">
                       <div className="flex flex-col items-center w-1/3">
-                           <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg bg-white object-cover" />
+                           <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-20 h-20 md:w-24 md:h-24 object-contain filter drop-shadow-md" />
                            <h2 className="text-lg md:text-2xl font-bold text-white mt-4 tracking-tight leading-none drop-shadow-md">{teamA?.name}</h2>
                       </div>
                       <div className="flex flex-col items-center w-1/3">
@@ -996,7 +999,7 @@ export default function App() {
                           </div>
                       </div>
                       <div className="flex flex-col items-center w-1/3">
-                           <img src={teamB?.logo || `https://ui-avatars.com/api/?name=${teamB?.name}`} className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white shadow-lg bg-white object-cover" />
+                           <img src={teamB?.logo || `https://ui-avatars.com/api/?name=${teamB?.name}`} className="w-20 h-20 md:w-24 md:h-24 object-contain filter drop-shadow-md" />
                            <h2 className="text-lg md:text-2xl font-bold text-white mt-4 tracking-tight leading-none drop-shadow-md">{teamB?.name}</h2>
                       </div>
                   </div>
@@ -1210,7 +1213,7 @@ export default function App() {
               </div>
               <div className="flex items-center justify-between pl-2">
                   <div className="flex items-center gap-3 w-1/3">
-                      <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-8 h-8 rounded-full bg-white border object-cover" />
+                      <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-8 h-8 object-contain" />
                       <span className="font-bold text-[#091F40] text-sm truncate">{teamADisplay}</span>
                   </div>
                   <div className="font-sans font-bold text-2xl text-[#091F40] bg-slate-50 px-4 py-1 rounded-lg border border-slate-100 whitespace-nowrap flex-shrink-0 min-w-[80px] text-center">
@@ -1226,7 +1229,7 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-3 w-1/3 justify-end">
                       <span className="font-bold text-[#091F40] text-sm truncate">{teamBDisplay}</span>
-                      <img src={teamB?.logo || `https://ui-avatars.com/api/?name=${teamB?.name}`} className="w-8 h-8 rounded-full bg-white border object-cover" />
+                      <img src={teamB?.logo || `https://ui-avatars.com/api/?name=${teamB?.name}`} className="w-8 h-8 object-contain" />
                   </div>
               </div>
           </div>
@@ -1243,7 +1246,7 @@ export default function App() {
   src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
   className="w-14 h-14 object-contain"
   alt="Logo"
-/> Edición Táctica</div>
+/> México</div>
                 <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-[#EF4135] bg-white px-2 skew-x-[-10deg] inline-block">REYES</span> 2026</h2>
             </div>
         </div>
@@ -1329,7 +1332,7 @@ export default function App() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{teams.map(t => (
             <div key={t.id} className="bg-white border border-green-100 p-4 rounded-lg shadow-sm flex flex-col gap-3 group">
                 <div className="flex items-center gap-4">
-                    <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-12 h-12 rounded-full shadow-sm object-cover" />
+                    <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-12 h-12 object-contain" />
                     <div className="flex-1">
                         <div className="font-bold text-sm text-[#091F40]">{t.name} ({t.shortName || 'N/A'})</div>
                         <div className="text-[10px] text-gray-500 font-bold uppercase">{t.style}</div>
@@ -1834,7 +1837,7 @@ export default function App() {
                                                                 {index < group.settings.classifiedSlots && <CheckSquare size={14} className="text-[#009B3A] inline-block ml-1" />}
                                                             </td>
                                                             <td className="px-2 py-2 whitespace-nowrap font-medium text-[#091F40] flex items-center gap-2">
-                                                                <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-5 h-5 rounded-full object-cover" />
+                                                                <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-5 h-5 object-contain" />
                                                                 {t.name}
                                                                 {isEditMode && (
                                                                     <Trash2 size={14} className="text-gray-400 hover:text-[#EF4135] cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
@@ -2105,7 +2108,7 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-white/50 uppercase font-bold tracking-wider">v5.4 - Brazil Edition</div>
+        <div className="text-[10px] text-center text-white/50 uppercase font-bold tracking-wider">v1.0 2026 Edition</div>
       </div>
       
       <div className="md:hidden bg-gradient-to-r from-[#009B3A] to-[#091F40] p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
