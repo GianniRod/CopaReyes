@@ -59,9 +59,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN FIREBASE ---
-/* SI VAS A SUBIR ESTO A GITHUB/VERCEL, DESCOMENTA ESTE BLOQUE Y COMENTA EL SIGUIENTE:
-   
+ 
    const firebaseConfig = {
        apiKey: import.meta.env.VITE_API_KEY,
        authDomain: import.meta.env.VITE_AUTH_DOMAIN,
@@ -71,11 +69,8 @@ import {
        appId: import.meta.env.VITE_APP_ID
    };
    const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
-*/
 
-// CONFIGURACIÓN PARA EL EDITOR ACTUAL (NO BORRAR SI LO USAS AQUÍ):
-const firebaseConfig = JSON.parse(__firebase_config);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
