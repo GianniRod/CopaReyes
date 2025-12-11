@@ -54,12 +54,28 @@ import {
   Settings
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN FIREBASE CORREGIDA ---
+// --- CONFIGURACIÓN FIREBASE ---
+
+/* SI VAS A SUBIR ESTO A GITHUB/VERCEL, DESCOMENTA ESTE BLOQUE Y COMENTA EL SIGUIENTE:
+   
+   const firebaseConfig = {
+       apiKey: import.meta.env.VITE_API_KEY,
+       authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+       projectId: import.meta.env.VITE_PROJECT_ID,
+       storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+       messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+       appId: import.meta.env.VITE_APP_ID
+   };
+   const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
+*/
+
+// CONFIGURACIÓN PARA EL EDITOR ACTUAL (NO BORRAR SI LO USAS AQUÍ):
 const firebaseConfig = JSON.parse(__firebase_config);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 
 // --- UTILIDADES ---
@@ -357,6 +373,7 @@ export default function App() {
   // Auth
   useEffect(() => {
     const initAuth = async () => {
+      // Uso de token personalizado si existe, para compatibilidad con el entorno de previsualización
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
       } else {
@@ -372,7 +389,8 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    // CAMBIO: Usamos 'public/data' en lugar de 'users/uid' para que todos vean lo mismo
+    // --- CAMBIO CLAVE: Usamos 'public/data' en lugar de 'users/uid' ---
+    // Esto hace que todos los dispositivos vean los mismos datos
     const teamsPath = collection(db, 'artifacts', appId, 'public', 'data', 'teams');
     const matchesPath = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
     const tournamentsPath = collection(db, 'artifacts', appId, 'public', 'data', 'tournaments'); 
