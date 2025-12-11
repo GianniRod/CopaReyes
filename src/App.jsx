@@ -477,6 +477,20 @@ export default function App() {
     return () => { unsubTeams(); unsubMatches(); unsubTournaments(); }; 
   }, [user]); 
 
+// --- FAVICON DINÁMICO ---
+  useEffect(() => {
+    const faviconUrl = "https://i.postimg.cc/T1xy0cy4/IMG-4967.png"; // Tu URL aquí
+    
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.getElementsByTagName('head')[0].appendChild(link);
+    }
+    link.href = faviconUrl;
+    document.title = "Copa de los Reyes 2026"; // Opcional: Cambiar título de la pestaña
+  }, []);
+  
   // Game Loop
   useEffect(() => {
     if (!user || matches.length === 0) return;
