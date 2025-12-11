@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -51,10 +51,10 @@ import {
   Eye,
   Pencil, 
   Save,
-  Settings
+  Settings,
+  TrendingUp,
+  BarChart3
 } from 'lucide-react';
-
-// --- CONFIGURACIÓN FIREBASE ---
 
 
    const firebaseConfig = {
@@ -66,8 +66,6 @@ import {
        appId: import.meta.env.VITE_APP_ID
    };
    const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
-
-
 
 
 const app = initializeApp(firebaseConfig);
@@ -115,6 +113,67 @@ const formatDate = (dateString) => {
         minute: '2-digit'
     });
 };
+
+// --- MOTOR DE SIMULACIÓN DE PROBABILIDADES ---
+const simulateQuickMatch = (probA, probB, startMinute = 0, currentScoreA = 0, currentScoreB = 0) => {
+    let sA = currentScoreA;
+    let sB = currentScoreB;
+    
+    // Probabilidad base ajustada para realismo (aprox 2.5 goles/partido)
+    const baseGoalChance = 0.12; 
+
+    for (let m = startMinute; m < 90; m++) {
+        let attackA = (probA * 0.6);
+        let attackB = (probB * 0.6);
+        
+        const totalAttack = attackA + attackB;
+        const random = Math.random();
+        
+        if (random < 0.25) { 
+            const isTeamA = Math.random() * totalAttack < attackA;
+            const diff = isTeamA ? probA - probB : probB - probA;
+            let goalChance = baseGoalChance + (diff * 0.08); 
+            
+            if (Math.random() < Math.max(0.02, goalChance)) {
+                if (isTeamA) sA++; else sB++;
+            }
+        }
+    }
+    return { sA, sB };
+};
+
+const calculateOdds = (teamA, teamB, startMinute = 0, currentScoreA = 0, currentScoreB = 0) => {
+    if (!teamA || !teamB) return { win: 0, draw: 0, loss: 0 };
+
+    const iterations = 1500; 
+    let winsA = 0;
+    let draws = 0;
+    let winsB = 0;
+
+    const probA = parseFloat(teamA.probability || 0.5);
+    const probB = parseFloat(teamB.probability || 0.5);
+
+    for (let i = 0; i < iterations; i++) {
+        const result = simulateQuickMatch(probA, probB, startMinute, currentScoreA, currentScoreB);
+        if (result.sA > result.sB) winsA++;
+        else if (result.sB > result.sA) winsB++;
+        else draws++;
+    }
+
+    const pWin = winsA / iterations;
+    const pDraw = draws / iterations;
+    const pLoss = winsB / iterations;
+
+    const formatOdd = (p) => p > 0.002 ? (1 / p).toFixed(2) : "500.00";
+
+    return {
+        home: formatOdd(pWin),
+        draw: formatOdd(pDraw),
+        away: formatOdd(pLoss),
+        probs: { w: (pWin*100).toFixed(0), d: (pDraw*100).toFixed(0), l: (pLoss*100).toFixed(0) }
+    };
+};
+
 
 const calculateStandings = (groupId, teamIds, allTeams, allMatches) => {
     const standings = teamIds.map(id => {
@@ -169,19 +228,30 @@ const calculateStandings = (groupId, teamIds, allTeams, allMatches) => {
 };
 
 
-// --- COMPONENTES UI ---
+// --- COMPONENTES UI CON NUEVA PALETA ---
+
+// Paleta: 
+// Dark Blue: #091F40 (bg-slate-900 approx) -> usaremos clase custom
+// Green: #009B3A (bg-green-600 approx)
+// Orange: #F58220 (bg-orange-500 approx)
+// Red: #EF4135 (bg-red-500 approx)
 
 const Card = ({ children, className = "" }) => (
-  <div className={`bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden ${className}`}>
+  <div className={`bg-white border-l-4 border-l-[#009B3A] rounded-xl shadow-sm overflow-hidden ${className}`}>
     {children}
   </div>
 );
 
 const Button = ({ onClick, children, variant = "primary", className = "", disabled = false, type = "button" }) => {
   const variants = {
-    primary: "bg-red-600 hover:bg-red-700 text-white font-bold shadow-md shadow-red-200",
-    secondary: "bg-white hover:bg-green-50 text-green-800 border border-green-200",
-    danger: "bg-red-100 hover:bg-red-200 text-red-700 border border-red-200",
+    // Primary ahora es Naranja (Highlights del logo)
+    primary: "bg-[#F58220] hover:bg-[#d66e15] text-white font-bold shadow-md shadow-orange-100",
+    // Secondary es blanco con borde verde
+    secondary: "bg-white hover:bg-[#009B3A]/10 text-[#091F40] border border-[#009B3A]",
+    // Danger es el Rojo del logo
+    danger: "bg-[#EF4135] hover:bg-[#c9342a] text-white border border-red-700",
+    // Dark es el Azul Marino
+    dark: "bg-[#091F40] hover:bg-[#06152b] text-white border border-slate-800"
   };
   return (
     <button 
@@ -197,13 +267,13 @@ const Button = ({ onClick, children, variant = "primary", className = "", disabl
 
 const SmallInput = ({ ...props }) => (
   <input 
-    className="bg-white border border-green-200 text-green-900 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none transition-all w-full"
+    className="bg-slate-50 border border-slate-200 text-[#091F40] rounded-lg p-2 focus:ring-2 focus:ring-[#009B3A] outline-none transition-all w-full"
     {...props}
   />
 );
 const SmallSelect = ({ options, ...props }) => (
   <select 
-    className="bg-white border border-green-200 text-green-900 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none w-full"
+    className="bg-slate-50 border border-slate-200 text-[#091F40] rounded-lg p-2 focus:ring-2 focus:ring-[#009B3A] outline-none w-full"
     {...props}
   >
       {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -212,9 +282,9 @@ const SmallSelect = ({ options, ...props }) => (
 
 const Input = ({ label, ...props }) => (
   <div className="flex flex-col gap-1 mb-3">
-    {label && <label className="text-[10px] uppercase tracking-widest text-green-600 font-bold">{label}</label>}
+    {label && <label className="text-[10px] uppercase tracking-widest text-[#009B3A] font-bold">{label}</label>}
     <input 
-      className="bg-white border border-green-200 text-green-900 rounded-lg p-2.5 focus:ring-2 focus:ring-green-500 outline-none transition-all w-full"
+      className="bg-slate-50 border border-slate-200 text-[#091F40] rounded-lg p-2.5 focus:ring-2 focus:ring-[#009B3A] outline-none transition-all w-full"
       {...props}
     />
   </div>
@@ -222,9 +292,9 @@ const Input = ({ label, ...props }) => (
 
 const Select = ({ label, options, ...props }) => (
   <div className="flex flex-col gap-1 mb-3">
-    {label && <label className="text-[10px] uppercase tracking-widest text-green-600 font-bold">{label}</label>}
+    {label && <label className="text-[10px] uppercase tracking-widest text-[#009B3A] font-bold">{label}</label>}
     <select 
-      className="bg-white border border-green-200 text-green-900 rounded-lg p-2.5 focus:ring-2 focus:ring-green-500 outline-none w-full"
+      className="bg-slate-50 border border-slate-200 text-[#091F40] rounded-lg p-2.5 focus:ring-2 focus:ring-[#009B3A] outline-none w-full"
       {...props}
     >
         {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -234,11 +304,11 @@ const Select = ({ label, options, ...props }) => (
 
 const Badge = ({ status, period }) => {
   const styles = {
-    scheduled: "bg-green-100 text-green-700 border border-green-200",
-    live: "bg-red-600 text-white shadow-md shadow-red-200 animate-pulse",
-    halftime: "bg-amber-400 text-amber-900 font-bold",
-    penalties: "bg-blue-600 text-white shadow-md shadow-blue-200 animate-pulse",
-    finished: "bg-green-700 text-white",
+    scheduled: "bg-slate-100 text-slate-600 border border-slate-200",
+    live: "bg-[#EF4135] text-white shadow-md shadow-red-200 animate-pulse", // Rojo logo
+    halftime: "bg-[#F58220] text-white font-bold", // Naranja logo
+    penalties: "bg-[#091F40] text-white shadow-md shadow-slate-300 animate-pulse", // Azul logo
+    finished: "bg-[#009B3A] text-white", // Verde logo
   };
   const labels = {
     scheduled: "PROGRAMADO",
@@ -256,19 +326,19 @@ const Badge = ({ status, period }) => {
 
 const ToggleSwitch = ({ isEnabled, onToggle, labelLeft, labelRight, IconLeft, IconRight }) => (
   <div className="flex items-center gap-2">
-    <span className={`font-bold text-xs uppercase ${!isEnabled ? 'text-red-600' : 'text-gray-400'}`}>
+    <span className={`font-bold text-xs uppercase ${!isEnabled ? 'text-[#EF4135]' : 'text-gray-400'}`}>
         {IconLeft && <IconLeft size={16} className="inline-block mr-1" />}
         {labelLeft}
     </span>
     <button
       onClick={onToggle}
-      className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-green-600' : 'bg-gray-300'}`}
+      className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${isEnabled ? 'bg-[#009B3A]' : 'bg-gray-300'}`}
     >
       <span
         className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`}
       />
     </button>
-    <span className={`font-bold text-xs uppercase ${isEnabled ? 'text-green-700' : 'text-gray-400'}`}>
+    <span className={`font-bold text-xs uppercase ${isEnabled ? 'text-[#009B3A]' : 'text-gray-400'}`}>
         {IconRight && <IconRight size={16} className="inline-block mr-1" />}
         {labelRight}
     </span>
@@ -279,23 +349,22 @@ const ToggleSwitch = ({ isEnabled, onToggle, labelLeft, labelRight, IconLeft, Ic
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border-2 border-red-100 transform scale-100">
-        <div className="flex items-center gap-3 text-red-600 mb-4">
-           <div className="bg-red-100 p-2 rounded-full"><AlertTriangle size={24} /></div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#091F40]/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border-l-4 border-l-[#EF4135] transform scale-100">
+        <div className="flex items-center gap-3 text-[#EF4135] mb-4">
+           <div className="bg-red-50 p-2 rounded-full"><AlertTriangle size={24} /></div>
            <h3 className="text-lg font-bold">{title}</h3>
         </div>
         <p className="text-gray-600 mb-6 text-sm">{message}</p>
         <div className="flex justify-end gap-3">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={() => { onConfirm(); onClose(); }}>Sí, Continuar</Button>
+          <Button variant="danger" onClick={() => { onConfirm(); onClose(); }}>Sí, Continuar</Button>
         </div>
       </div>
     </div>
   );
 };
 
-// --- NUEVO: Modal para editar fecha ---
 const EditDateModal = ({ isOpen, onClose, onConfirm, currentDate }) => {
   const [newDate, setNewDate] = useState(currentDate || '');
   
@@ -306,10 +375,10 @@ const EditDateModal = ({ isOpen, onClose, onConfirm, currentDate }) => {
   if (!isOpen) return null;
   
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border-2 border-green-100 transform scale-100">
-        <div className="flex items-center gap-3 text-green-700 mb-4">
-           <div className="bg-green-100 p-2 rounded-full"><Calendar size={24} /></div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#091F40]/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border-l-4 border-l-[#009B3A] transform scale-100">
+        <div className="flex items-center gap-3 text-[#009B3A] mb-4">
+           <div className="bg-green-50 p-2 rounded-full"><Calendar size={24} /></div>
            <h3 className="text-lg font-bold">Reprogramar Partido</h3>
         </div>
         <div className="mb-6">
@@ -333,14 +402,14 @@ const StatRow = ({ label, valA, valB, total }) => {
     const percentA = total > 0 ? (valA / total) * 100 : 50;
     return (
       <div className="mb-3">
-          <div className="flex justify-between text-xs font-bold text-green-700 mb-1 uppercase tracking-widest">
-              <span className="text-green-900">{valA}</span>
-              <span className="text-gray-500">{label}</span>
-              <span className="text-green-900">{valB}</span>
+          <div className="flex justify-between text-xs font-bold text-[#091F40] mb-1 uppercase tracking-widest">
+              <span className="text-[#009B3A]">{valA}</span>
+              <span className="text-gray-400">{label}</span>
+              <span className="text-[#F58220]">{valB}</span>
           </div>
           <div className="flex h-2 bg-gray-200 rounded-full overflow-hidden shadow-inner">
-              <div className="bg-green-600" style={{ width: `${percentA}%` }}></div>
-              <div className="bg-red-600" style={{ width: `${100 - percentA}%` }}></div>
+              <div className="bg-[#009B3A]" style={{ width: `${percentA}%` }}></div>
+              <div className="bg-[#F58220]" style={{ width: `${100 - percentA}%` }}></div>
           </div>
       </div>
     );
@@ -363,14 +432,12 @@ export default function App() {
   const [deleteMatchId, setDeleteMatchId] = useState(null);
   const [deleteTournamentId, setDeleteTournamentId] = useState(null); 
   
-  // --- NUEVO: Estado para editar fecha de partido ---
   const [editDateMatchId, setEditDateMatchId] = useState(null);
   const [editDateCurrent, setEditDateCurrent] = useState('');
 
   // Auth
   useEffect(() => {
     const initAuth = async () => {
-      // Uso de token personalizado si existe, para compatibilidad con el entorno de previsualización
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
       } else {
@@ -382,12 +449,10 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Data Fetching - AHORA USA 'public/data' PARA SER UNIVERSAL
+  // Data Fetching
   useEffect(() => {
     if (!user) return;
     
-    // --- CAMBIO CLAVE: Usamos 'public/data' en lugar de 'users/uid' ---
-    // Esto hace que todos los dispositivos vean los mismos datos
     const teamsPath = collection(db, 'artifacts', appId, 'public', 'data', 'teams');
     const matchesPath = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
     const tournamentsPath = collection(db, 'artifacts', appId, 'public', 'data', 'tournaments'); 
@@ -447,7 +512,6 @@ export default function App() {
     if (match.matchType === 'leg2') startText = '¡Comienza el partido de VUELTA!';
     if (match.groupId) startText = `¡Comienza el partido del ${match.groupName || 'Grupo'}!`; 
 
-    // CAMBIO: public/data
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), {
       status: 'live', period: '1T', currentMinute: 0, addedTime: Math.floor(Math.random()*4)+1, halftimeCounter: 0, scoreA: 0, scoreB: 0,
       events: [{ type: 'whistle', minute: 0, text: startText }],
@@ -469,7 +533,6 @@ export default function App() {
       } else {
         updates = { halftimeCounter: newCounter };
       }
-      // CAMBIO: public/data
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
       return;
     }
@@ -521,7 +584,6 @@ export default function App() {
         }
       }
       
-      // CAMBIO: public/data
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
       return;
     }
@@ -539,7 +601,7 @@ export default function App() {
       if (teamB.style === 'possession') targetPossession -= 15;
       stats.possession = Math.round(stats.possession + ((targetPossession - stats.possession) * 0.1) + (Math.random()*4-2));
 
-      if (Math.random() < 0.22) { 
+      if (Math.random() < 0.22) { // 22% de que pase algo en el minuto
           let attackA = (probA * 0.5) + (stats.possession/200);
           let attackB = (probB * 0.5) + ((100-stats.possession)/200);
           const isTeamA = Math.random() * (attackA + attackB) < attackA;
@@ -580,7 +642,6 @@ export default function App() {
     }
     updates.events = newEvents;
     updates.stats = stats;
-    // CAMBIO: public/data
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
   };
 
@@ -592,7 +653,6 @@ export default function App() {
     if (team === 'A') updateData.scoreA = Math.max(0, match.scoreA + delta);
     if (team === 'B') updateData.scoreB = Math.max(0, match.scoreB + delta);
     updateData.events = [...match.events, { type: 'manual', minute: match.currentMinute || 0, text: `VAR: Ajuste manual de marcador` }];
-    // CAMBIO: public/data
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', matchId), updateData);
   };
 
@@ -604,7 +664,6 @@ export default function App() {
     const currentShootout = JSON.parse(JSON.stringify(match.penaltyShootout));
     const newEvents = [...match.events];
     currentShootout.isKicking = true;
-    // CAMBIO: public/data
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), { penaltyShootout: currentShootout });
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
     const kickerSide = currentShootout.kicker;
@@ -646,7 +705,6 @@ export default function App() {
       const winnerTeam = (currentShootout.winner === 'A') ? teamA : teamB;
       newEvents.push({ type: 'whistle', minute: 'PEN', text: `¡${winnerTeam.name} GANA LA TANDA DE PENALES!` });
     }
-    // CAMBIO: public/data
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), {
       status: newStatus,
       penaltyShootout: currentShootout,
@@ -654,10 +712,8 @@ export default function App() {
     });
   };
 
-  // --- NUEVO: Manejador para guardar fecha editada ---
   const handleUpdateMatchDate = async (newDate) => {
       if (!user || !editDateMatchId || !newDate) return;
-      // CAMBIO: public/data
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', editDateMatchId), {
           startTime: newDate
       });
@@ -674,16 +730,16 @@ export default function App() {
     if (!teamA || !teamB || !shootout) return null;
     const renderIcon = (result, index) => {
       if (result === 'goal') {
-        return <div key={index} className="w-7 h-7 rounded-full bg-green-500 border-2 border-green-600 flex items-center justify-center shadow-inner">
+        return <div key={index} className="w-7 h-7 rounded-full bg-[#009B3A] border-2 border-green-600 flex items-center justify-center shadow-inner">
           <Check size={18} className="text-white" />
         </div>;
       }
       if (result === 'miss') {
-        return <div key={index} className="w-7 h-7 rounded-full bg-red-500 border-2 border-red-600 flex items-center justify-center shadow-inner">
+        return <div key={index} className="w-7 h-7 rounded-full bg-[#EF4135] border-2 border-red-600 flex items-center justify-center shadow-inner">
           <X size={18} className="text-white" />
         </div>;
       }
-      return <div key={index} className="w-7 h-7 rounded-full bg-gray-200 border-2 border-gray-300 shadow-inner"></div>;
+      return <div key={index} className="w-7 h-7 rounded-full bg-slate-200 border-2 border-slate-300 shadow-inner"></div>;
     };
     const getKicks = (side) => {
         const kicks = shootout.log.filter(k => k.kicker === side).map(k => k.result);
@@ -702,14 +758,14 @@ export default function App() {
     const kickerName = shootout.kicker === 'A' ? teamA.name : teamB.name;
     const isFinished = !!shootout.winner;
     return (
-      <Card className="lg:col-span-12 bg-blue-50 border-blue-200 animate-in fade-in duration-300">
+      <Card className="lg:col-span-12 bg-slate-50 border-slate-200 animate-in fade-in duration-300">
         <div className="p-6">
-          <h3 className="text-blue-800 uppercase text-sm font-bold mb-6 flex items-center gap-2 border-b border-blue-100 pb-2">
-            <Target size={14} className="text-blue-600" /> Tanda de Penales
+          <h3 className="text-[#091F40] uppercase text-sm font-bold mb-6 flex items-center gap-2 border-b border-slate-200 pb-2">
+            <Target size={14} className="text-[#009B3A]" /> Tanda de Penales
           </h3>
           <div className="flex justify-center items-start gap-6 mb-6">
             <div className="flex flex-col items-center gap-3 flex-1">
-              <span className="text-lg font-bold text-gray-700 text-center">{teamA.name}</span>
+              <span className="text-lg font-bold text-[#091F40] text-center">{teamA.name}</span>
               <div className="flex flex-col gap-2 items-center">
                   <div className="flex gap-2 flex-wrap justify-center">
                     {kicksA_row1.map((result, i) => renderIcon(result, `a1-${i}`))}
@@ -720,11 +776,11 @@ export default function App() {
                     </div>
                   )}
               </div>
-              <div className="text-4xl font-bold text-blue-900">{shootout.scoreA}</div>
+              <div className="text-4xl font-bold text-[#009B3A]">{shootout.scoreA}</div>
             </div>
             <div className="text-2xl text-gray-400 font-bold pt-10">vs</div>
             <div className="flex flex-col items-center gap-3 flex-1">
-              <span className="text-lg font-bold text-gray-700 text-center">{teamB.name}</span>
+              <span className="text-lg font-bold text-[#091F40] text-center">{teamB.name}</span>
               <div className="flex flex-col gap-2 items-center">
                   <div className="flex gap-2 flex-wrap justify-center">
                     {kicksB_row1.map((result, i) => renderIcon(result, `b1-${i}`))}
@@ -735,14 +791,14 @@ export default function App() {
                     </div>
                   )}
               </div>
-              <div className="text-4xl font-bold text-blue-900">{shootout.scoreB}</div>
+              <div className="text-4xl font-bold text-[#009B3A]">{shootout.scoreB}</div>
             </div>
           </div>
           <div className="text-center">
             {isFinished ? (
-              <p className="text-xl font-bold text-green-600">¡GANADOR: {(shootout.winner === 'A' ? teamA.name : teamB.name).toUpperCase()}!</p>
+              <p className="text-xl font-bold text-[#009B3A]">¡GANADOR: {(shootout.winner === 'A' ? teamA.name : teamB.name).toUpperCase()}!</p>
             ) : (
-              <Button onClick={onKick} disabled={shootout.isKicking} className="bg-blue-600 hover:bg-blue-700 shadow-blue-200 text-lg px-8 py-3">
+              <Button onClick={onKick} disabled={shootout.isKicking} className="bg-[#091F40] hover:bg-[#06152b] shadow-slate-300 text-lg px-8 py-3">
                 {shootout.isKicking ? 'Pateando...' : `Patear (${kickerName})`}
               </Button>
             )}
@@ -753,10 +809,23 @@ export default function App() {
   };
 
   const MatchDetail = ({ match, onBack }) => {
+      const [showLiveOdds, setShowLiveOdds] = useState(false);
       const teamA = teams.find(t => t.id === match.teamAId);
       const teamB = teams.find(t => t.id === match.teamBId);
       const stats = match.stats || { possession: 50, shotsA: 0, shotsB: 0, onTargetA: 0, onTargetB: 0, foulsA: 0, foulsB: 0, yellowA: 0, yellowB: 0, redA: 0, redB: 0, cornersA: 0, cornersB: 0 };
       const [seconds, setSeconds] = useState(0);
+      
+      const isMatchLive = match.status === 'live' || match.status === 'halftime';
+      const isMatchFinished = match.status === 'finished' || match.status === 'penalties';
+
+      // --- LIVE ODDS CALCULATION ---
+      const odds = useMemo(() => {
+          if (showLiveOdds && isMatchLive) {
+              return calculateOdds(teamA, teamB, match.currentMinute, match.scoreA, match.scoreB);
+          }
+          return match.initialOdds || { home: '-', draw: '-', away: '-' };
+      }, [showLiveOdds, match.scoreA, match.scoreB, match.currentMinute, teamA, teamB, isMatchLive]);
+
       useEffect(() => {
         let timerId = null;
         if (match.status === 'live' && timeScale === 60000) {
@@ -841,19 +910,19 @@ export default function App() {
       
       return (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 pb-10">
-              <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-lg border border-green-100 shadow-sm">
-                <button onClick={onBack} className="text-green-700 hover:text-green-900 flex items-center gap-2 text-sm font-bold uppercase">← Volver</button>
+              <div className="flex justify-between items-center mb-4 bg-white p-3 rounded-lg border-l-4 border-l-[#091F40] shadow-sm">
+                <button onClick={onBack} className="text-[#091F40] hover:text-[#009B3A] flex items-center gap-2 text-sm font-bold uppercase">← Volver</button>
                 {match.status !== 'penalties' && !(match.status === 'finished' && match.penaltyShootout) && (
                   <div className="flex gap-1">
                     {[60000, 2000, 1000, 50].map(speed => (
-                        <button key={speed} onClick={() => setTimeScale(speed)} className={`w-8 h-8 flex items-center justify-center rounded text-xs font-bold transition-colors ${timeScale === speed ? 'bg-red-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
+                        <button key={speed} onClick={() => setTimeScale(speed)} className={`w-8 h-8 flex items-center justify-center rounded text-xs font-bold transition-colors ${timeScale === speed ? 'bg-[#F58220] text-white' : 'bg-slate-100 text-[#091F40] hover:bg-slate-200'}`}>
                             {speed === 60000 ? 'x1' : speed === 2000 ? 'x30' : speed === 1000 ? 'x60' : '⚡'}
                         </button>
                     ))}
                   </div>
                 )}
               </div>
-              <div className="bg-gradient-to-r from-green-800 to-green-700 rounded-t-2xl border-b-4 border-red-600 p-6 md:p-8 text-center relative overflow-hidden shadow-xl">
+              <div className="bg-gradient-to-r from-[#009B3A] to-[#091F40] rounded-t-2xl border-b-4 border-[#F58220] p-6 md:p-8 text-center relative overflow-hidden shadow-xl">
                   <div className="absolute top-3 right-3 z-20 text-white/70 text-[10px] font-bold uppercase">{formatDate(match.startTime)}</div>
 
                   {match.matchType === 'leg1' && <div className="absolute top-3 left-3 z-20 bg-white/20 text-white text-xs font-bold uppercase px-2 py-1 rounded">Partido de Ida</div>}
@@ -902,49 +971,96 @@ export default function App() {
                   ) : (
                     <>
                       <div className="lg:col-span-4 space-y-4">
-                          <div className="bg-white border border-green-100 rounded-xl p-6 shadow-sm">
-                              <h3 className="text-green-800 uppercase text-xs font-bold mb-6 flex items-center gap-2 border-b border-green-100 pb-2">
-                                  <Activity size={14} className="text-red-600" /> Datos del Partido
+                          {/* --- NUEVO: Panel de Cuotas con colores del logo --- */}
+                          <div className="bg-[#091F40] text-white rounded-xl p-4 shadow-lg border border-[#009B3A]">
+                              <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-700">
+                                  <h3 className="text-xs font-bold uppercase flex items-center gap-2 text-[#F58220]">
+                                      <TrendingUp size={14} /> Probabilidades & Cuotas
+                                  </h3>
+                                  <div className="flex bg-gray-800 rounded-lg p-0.5">
+                                      <button 
+                                        onClick={() => setShowLiveOdds(false)}
+                                        className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${!showLiveOdds ? 'bg-[#F58220] text-white' : 'text-gray-400 hover:text-white'}`}
+                                      >
+                                          Initial Odds
+                                      </button>
+                                      <button 
+                                        onClick={() => setShowLiveOdds(true)}
+                                        disabled={!isMatchLive}
+                                        className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${showLiveOdds ? 'bg-[#EF4135] text-white animate-pulse' : 'text-gray-400'} ${!isMatchLive && 'opacity-30 cursor-not-allowed'}`}
+                                      >
+                                          Live Odds
+                                      </button>
+                                  </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-center">
+                                  <div className="bg-[#06152b] p-2 rounded-lg border border-[#009B3A]/30 hover:border-[#009B3A] transition-colors">
+                                      <div className="text-[10px] text-gray-400 font-bold mb-1 truncate">{teamA.name}</div>
+                                      <div className="text-xl font-mono font-bold text-[#009B3A]">{odds.home}</div>
+                                      <div className="text-[9px] text-gray-500">{odds.probs?.w}%</div>
+                                  </div>
+                                  <div className="bg-[#06152b] p-2 rounded-lg border border-[#F58220]/30 hover:border-[#F58220] transition-colors">
+                                      <div className="text-[10px] text-gray-400 font-bold mb-1">EMPATE</div>
+                                      <div className="text-xl font-mono font-bold text-[#F58220]">{odds.draw}</div>
+                                      <div className="text-[9px] text-gray-500">{odds.probs?.d}%</div>
+                                  </div>
+                                  <div className="bg-[#06152b] p-2 rounded-lg border border-[#EF4135]/30 hover:border-[#EF4135] transition-colors">
+                                      <div className="text-[10px] text-gray-400 font-bold mb-1 truncate">{teamB.name}</div>
+                                      <div className="text-xl font-mono font-bold text-[#EF4135]">{odds.away}</div>
+                                      <div className="text-[9px] text-gray-500">{odds.probs?.l}%</div>
+                                  </div>
+                              </div>
+                              {showLiveOdds && (
+                                  <div className="mt-3 text-[10px] text-center text-gray-500 italic flex items-center justify-center gap-1">
+                                      <Activity size={10} className="text-[#EF4135]" />
+                                      Actualizando probabilidades en tiempo real...
+                                  </div>
+                              )}
+                          </div>
+
+                          <div className="bg-white border-l-4 border-l-[#091F40] rounded-xl p-6 shadow-sm">
+                              <h3 className="text-[#091F40] uppercase text-xs font-bold mb-6 flex items-center gap-2 border-b border-gray-100 pb-2">
+                                  <Activity size={14} className="text-[#EF4135]" /> Datos del Partido
                               </h3>
                               <div className="space-y-5">
                                 <div className="mb-6">
-                                    <div className="flex justify-between text-2xl font-mono font-bold text-green-900 mb-2">
-                                        <span className="text-green-700">{stats.possession}%</span>
+                                    <div className="flex justify-between text-2xl font-mono font-bold text-[#091F40] mb-2">
+                                        <span className="text-[#009B3A]">{stats.possession}%</span>
                                         <span className="text-[10px] font-sans text-gray-400 font-bold self-center uppercase">Posesión</span>
-                                        <span className="text-red-700">{100 - stats.possession}%</span>
+                                        <span className="text-[#F58220]">{100 - stats.possession}%</span>
                                     </div>
                                     <div className="flex h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                        <div className="bg-green-600" style={{ width: `${stats.possession}%` }}></div>
-                                        <div className="bg-red-600" style={{ width: `${100 - stats.possession}%` }}></div>
+                                        <div className="bg-[#009B3A]" style={{ width: `${stats.possession}%` }}></div>
+                                        <div className="bg-[#F58220]" style={{ width: `${100 - stats.possession}%` }}></div>
                                     </div>
                                 </div>
                                 <StatRow label="Tiros" valA={stats.shotsA} valB={stats.shotsB} total={stats.shotsA + stats.shotsB} />
                                 <StatRow label="Al Arco" valA={stats.onTargetA} valB={stats.onTargetB} total={stats.onTargetA + stats.onTargetB} />
                                 <StatRow label="Córners" valA={stats.cornersA} valB={stats.cornersB} total={stats.cornersA + stats.cornersB} />
-                                <div className="my-4 border-t border-green-50 border-dashed"></div>
+                                <div className="my-4 border-t border-gray-100 border-dashed"></div>
                                 <StatRow label="Faltas" valA={stats.foulsA} valB={stats.foulsB} total={stats.foulsA + stats.foulsB} />
                                 <StatRow label="Amarillas" valA={stats.yellowA} valB={stats.yellowB} total={stats.yellowA + stats.yellowB} />
                                 <StatRow label="Rojas" valA={stats.redA} valB={stats.redB} total={stats.redA + stats.redB} />
                               </div>
                           </div>
                           {match.status !== 'finished' && (
-                            <div className="bg-white border border-green-100 rounded-xl p-4 shadow-sm flex flex-col gap-2">
+                            <div className="bg-white border-l-4 border-l-[#009B3A] rounded-xl p-4 shadow-sm flex flex-col gap-2">
                                 {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
-                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), { status: 'finished' })} className="w-full text-red-600 border-red-100">Terminar Partido</Button>}
+                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), { status: 'finished' })} className="w-full text-[#EF4135] border-[#EF4135] hover:bg-red-50">Terminar Partido</Button>}
                                 <div className="flex gap-2 mt-2">
-                                    <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
-                                    <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-800 text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
+                                    <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-[#009B3A] text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
+                                    <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-[#009B3A] text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
                                 </div>
                             </div>
                           )}
                       </div>
-                      <div className="lg:col-span-8 bg-white border border-green-100 rounded-xl overflow-hidden flex flex-col h-[600px] shadow-sm">
-                          <div className="bg-green-50 p-3 border-b border-green-100"><h3 className="text-green-800 font-bold text-xs uppercase flex items-center gap-2"><Timer size={14} /> Minuto a Minuto</h3></div>
+                      <div className="lg:col-span-8 bg-white border-l-4 border-l-[#F58220] rounded-xl overflow-hidden flex flex-col h-[600px] shadow-sm">
+                          <div className="bg-slate-50 p-3 border-b border-slate-100"><h3 className="text-[#091F40] font-bold text-xs uppercase flex items-center gap-2"><Timer size={14} /> Minuto a Minuto</h3></div>
                           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
                               {[...match.events].reverse().map((ev, idx) => (
-                                  <div key={idx} className={`flex items-start gap-3 p-3 rounded border shadow-sm ${ev.type === 'goal' ? 'bg-yellow-50 border-yellow-200' : (ev.type === 'whistle' ? 'bg-blue-50 border-blue-100' : 'bg-white border-gray-100')}`}>
-                                      <div className="text-green-700 font-mono font-bold text-sm min-w-[32px] text-right">{ev.minute}'</div>
-                                      <div className="flex-1"><p className={`text-sm font-medium ${ev.type === 'goal' ? 'text-green-900 font-bold' : (ev.type === 'whistle' ? 'text-blue-800 font-bold' : 'text-gray-600')}`}>{ev.text}</p></div>
+                                  <div key={idx} className={`flex items-start gap-3 p-3 rounded border shadow-sm ${ev.type === 'goal' ? 'bg-orange-50 border-orange-200' : (ev.type === 'whistle' ? 'bg-slate-50 border-slate-200' : 'bg-white border-gray-100')}`}>
+                                      <div className="text-[#009B3A] font-mono font-bold text-sm min-w-[32px] text-right">{ev.minute}'</div>
+                                      <div className="flex-1"><p className={`text-sm font-medium ${ev.type === 'goal' ? 'text-[#091F40] font-black' : (ev.type === 'whistle' ? 'text-[#009B3A] font-bold' : 'text-gray-600')}`}>{ev.text}</p></div>
                                   </div>
                               ))}
                           </div>
@@ -1027,17 +1143,17 @@ export default function App() {
       }
 
       return (
-          <div onClick={onClick} className="p-4 hover:bg-green-50 transition-all cursor-pointer group relative overflow-hidden rounded-xl">
-              {(match.status === 'live' || match.status === 'penalties') && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-red-500' : 'bg-blue-500'}`}></div>}
+          <div onClick={onClick} className="p-4 hover:bg-slate-50 transition-all cursor-pointer group relative overflow-hidden rounded-xl border-l-4 border-l-[#091F40] bg-white shadow-sm">
+              {(match.status === 'live' || match.status === 'penalties') && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-[#EF4135]' : 'bg-[#009B3A]'}`}></div>}
               
               <div className="absolute top-2 right-2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                   {/* --- NUEVO: Botón editar fecha --- */}
                   <button onClick={(e) => { e.stopPropagation(); onEditDate(match.id, match.startTime); }}
-                      className="text-gray-300 hover:text-blue-600 p-1.5 bg-white/80 rounded-full shadow-sm">
+                      className="text-gray-300 hover:text-[#009B3A] p-1.5 bg-white/80 rounded-full shadow-sm">
                       <Pencil size={14} />
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); onDelete(match.id); }}
-                      className="text-gray-300 hover:text-red-600 p-1.5 bg-white/80 rounded-full shadow-sm">
+                      className="text-gray-300 hover:text-[#EF4135] p-1.5 bg-white/80 rounded-full shadow-sm">
                       <Trash2 size={14} />
                   </button>
               </div>
@@ -1046,7 +1162,7 @@ export default function App() {
                   <Badge status={match.status} period={match.period} />
                   <span className="text-xs text-gray-500 font-mono font-bold uppercase">{timeLabel}</span>
               </div>
-              <div className="flex justify-between items-center mb-4 pl-2 text-xs text-green-800 font-bold h-4">
+              <div className="flex justify-between items-center mb-4 pl-2 text-xs text-[#009B3A] font-bold h-4">
                  <span className="truncate">
                     {match.matchType === 'leg1' && 'IDA'}
                     {match.matchType === 'leg2' && 'VUELTA'}
@@ -1059,11 +1175,11 @@ export default function App() {
               <div className="flex items-center justify-between pl-2">
                   <div className="flex items-center gap-3 w-1/3">
                       <img src={teamA?.logo || `https://ui-avatars.com/api/?name=${teamA?.name}`} className="w-8 h-8 rounded-full bg-white border object-cover" />
-                      <span className="font-bold text-green-900 text-sm truncate">{teamADisplay}</span>
+                      <span className="font-bold text-[#091F40] text-sm truncate">{teamADisplay}</span>
                   </div>
-                  <div className="font-sans font-bold text-2xl text-green-800 bg-green-50 px-4 py-1 rounded-lg border border-green-100 whitespace-nowrap flex-shrink-0 min-w-[80px] text-center">
+                  <div className="font-sans font-bold text-2xl text-[#091F40] bg-slate-50 px-4 py-1 rounded-lg border border-slate-100 whitespace-nowrap flex-shrink-0 min-w-[80px] text-center">
                     {match.status === 'scheduled' ? (
-                      <span className="text-xl text-green-600">VS</span>
+                      <span className="text-xl text-[#009B3A]">VS</span>
                     ) : (
                       <div className="flex items-center justify-center gap-2">
                         <span className={`transition-opacity duration-500 ${scoreOpacityA}`}>{match.scoreA}</span>
@@ -1073,7 +1189,7 @@ export default function App() {
                     )}
                   </div>
                   <div className="flex items-center gap-3 w-1/3 justify-end">
-                      <span className="font-bold text-green-900 text-sm truncate">{teamBDisplay}</span>
+                      <span className="font-bold text-[#091F40] text-sm truncate">{teamBDisplay}</span>
                       <img src={teamB?.logo || `https://ui-avatars.com/api/?name=${teamB?.name}`} className="w-8 h-8 rounded-full bg-white border object-cover" />
                   </div>
               </div>
@@ -1085,25 +1201,25 @@ export default function App() {
     const liveMatches = matches.filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'penalties');
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
-        <div className="relative rounded-2xl overflow-hidden bg-green-800 p-8 shadow-xl text-white mb-8 border-b-4 border-red-600">
+        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-[#009B3A] to-[#06152b] p-8 shadow-xl text-white mb-8 border-b-4 border-[#F58220]">
             <div className="relative z-10">
-                <div className="flex items-center gap-2 text-yellow-400 font-bold uppercase tracking-widest text-sm mb-2"><img 
+                <div className="flex items-center gap-2 text-[#F58220] font-bold uppercase tracking-widest text-sm mb-2"><img 
   src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
   className="w-14 h-14 object-contain"
   alt="Logo"
 /> Edición Táctica</div>
-                <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-red-500 bg-white px-2 skew-x-[-10deg] inline-block">REYES</span> 2026</h2>
+                <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter mb-2">COPA DE LOS <span className="text-[#EF4135] bg-white px-2 skew-x-[-10deg] inline-block">REYES</span> 2026</h2>
             </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-5 border-l-4 border-l-red-500 bg-white shadow-sm">
-             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">En Juego</p><p className="text-3xl font-bold text-green-900">{liveMatches.length}</p></div>
+          <Card className="p-5 border-l-4 border-l-[#EF4135] bg-white shadow-sm">
+             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">En Juego</p><p className="text-3xl font-bold text-[#091F40]">{liveMatches.length}</p></div>
           </Card>
-          <Card className="p-5 border-l-4 border-l-green-600 bg-white shadow-sm">
-             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Programados</p><p className="text-3xl font-bold text-green-900">{matches.filter(m => m.status === 'scheduled').length}</p></div>
+          <Card className="p-5 border-l-4 border-l-[#009B3A] bg-white shadow-sm">
+             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Programados</p><p className="text-3xl font-bold text-[#091F40]">{matches.filter(m => m.status === 'scheduled').length}</p></div>
           </Card>
-          <Card className="p-5 border-l-4 border-l-yellow-500 bg-white shadow-sm">
-             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Clubes</p><p className="text-3xl font-bold text-green-900">{teams.length}</p></div>
+          <Card className="p-5 border-l-4 border-l-[#F58220] bg-white shadow-sm">
+             <div className="flex justify-between"><p className="text-gray-400 text-xs font-bold uppercase">Clubes</p><p className="text-3xl font-bold text-[#091F40]">{teams.length}</p></div>
           </Card>
         </div>
       </div>
@@ -1120,11 +1236,9 @@ export default function App() {
         if (!user) return; 
         
         if (editingTeamId) {
-            // CAMBIO: public/data
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teams', editingTeamId), formData);
         } else {
             const roster = generateRoster();
-            // CAMBIO: public/data
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'teams'), { ...formData, roster, createdAt: serverTimestamp() }); 
         }
         
@@ -1153,14 +1267,14 @@ export default function App() {
     return (
       <div>
         <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-green-900">Clubes Registrados</h2>
+            <h2 className="text-2xl font-bold text-[#091F40]">Clubes Registrados</h2>
             <Button onClick={() => { if(isEditing) resetForm(); else setIsEditing(true); }}>
                 {isEditing ? 'Cancelar' : <><Plus size={16} /> Nuevo Club</>}
             </Button>
         </div>
         {isEditing && (
           <Card className="p-6 mb-6 bg-white shadow-lg animate-in slide-in-from-top-2">
-            <div className="flex items-center gap-2 mb-4 text-green-800 font-bold border-b pb-2">
+            <div className="flex items-center gap-2 mb-4 text-[#009B3A] font-bold border-b pb-2">
                 {editingTeamId ? <><Edit size={16}/> Editar Club</> : <><Plus size={16}/> Crear Nuevo Club</>}
             </div>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1169,7 +1283,7 @@ export default function App() {
                <Input label="Logo URL" value={formData.logo} onChange={e => setFormData({...formData, logo: e.target.value})} />
                <Select label="Estilo" value={formData.style} onChange={e => setFormData({...formData, style: e.target.value})} options={[{ value: 'balanced', label: 'Equilibrado' }, { value: 'possession', label: 'Posesión' }, { value: 'counter', label: 'Contraataque' }]} />
                <div>
-                   <label className="text-[10px] uppercase tracking-widest text-green-600 font-bold mb-1 block">Fuerza: {Math.round(formData.probability*100)}%</label>
+                   <label className="text-[10px] uppercase tracking-widest text-[#009B3A] font-bold mb-1 block">Fuerza: {Math.round(formData.probability*100)}%</label>
                    <input type="range" min="0.1" max="1.0" step="0.01" className="w-full h-2 bg-green-100 rounded-lg accent-green-600" value={formData.probability} onChange={e => setFormData({...formData, probability: parseFloat(e.target.value)})} />
                </div>
                <Button type="submit" className="md:col-span-3">{editingTeamId ? 'Guardar Cambios' : 'Crear Equipo'}</Button>
@@ -1181,15 +1295,15 @@ export default function App() {
                 <div className="flex items-center gap-4">
                     <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-12 h-12 rounded-full shadow-sm object-cover" />
                     <div className="flex-1">
-                        <div className="font-bold text-sm text-green-900">{t.name} ({t.shortName || 'N/A'})</div>
+                        <div className="font-bold text-sm text-[#091F40]">{t.name} ({t.shortName || 'N/A'})</div>
                         <div className="text-[10px] text-gray-500 font-bold uppercase">{t.style}</div>
                     </div>
                     <div className="flex gap-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleEditTeam(t); }} className="text-gray-400 hover:text-blue-500 p-2 bg-gray-50 hover:bg-blue-50 rounded-full transition-colors"> <Pencil size={14}/> </button>
-                        <button onClick={(e) => { e.stopPropagation(); setDeleteTeamId(t.id); }} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 hover:bg-red-50 rounded-full transition-colors"> <Trash2 size={14}/> </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleEditTeam(t); }} className="text-gray-400 hover:text-[#009B3A] p-2 bg-gray-50 hover:bg-green-50 rounded-full transition-colors"> <Pencil size={14}/> </button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeleteTeamId(t.id); }} className="text-gray-400 hover:text-[#EF4135] p-2 bg-gray-50 hover:bg-red-50 rounded-full transition-colors"> <Trash2 size={14}/> </button>
                     </div>
                 </div>
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-green-500" style={{width: `${t.probability*100}%`}}></div></div>
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#009B3A]" style={{width: `${t.probability*100}%`}}></div></div>
             </div>
         ))}</div>
       </div>
@@ -1225,21 +1339,46 @@ export default function App() {
     const handleSchedule = async (e) => { 
         e.preventDefault(); 
         if (!user) return;
-        const baseData = { status: 'scheduled', scoreA: 0, scoreB: 0, currentMinute: 0, events: [], period: '1T', addedTime: 0, halftimeCounter: 0, createdAt: serverTimestamp(), autoStart: formData.autoStart, tournamentId: null, groupId: null, groupName: null, jornada: null, seriesId: null, matchType: 'single' };
+        
+        let initialOdds = { home: '-', draw: '-', away: '-' };
+        if (formData.teamAId && formData.teamBId) {
+            const tA = teams.find(t => t.id === formData.teamAId);
+            const tB = teams.find(t => t.id === formData.teamBId);
+            initialOdds = calculateOdds(tA, tB);
+        }
+
+        const baseData = { 
+            status: 'scheduled', 
+            scoreA: 0, scoreB: 0, 
+            currentMinute: 0, 
+            events: [], 
+            period: '1T', 
+            addedTime: 0, 
+            halftimeCounter: 0, 
+            createdAt: serverTimestamp(), 
+            autoStart: formData.autoStart, 
+            tournamentId: null, 
+            groupId: null, 
+            groupName: null, 
+            jornada: null, 
+            seriesId: null, 
+            matchType: 'single',
+            initialOdds: initialOdds 
+        };
+
         if (formData.matchType === 'single') {
             if (!formData.teamAId || !formData.teamBId || !formData.startTime) return;
-            // CAMBIO: public/data
             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'matches'), { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime });
         } else {
             if (!formData.teamAId || !formData.teamBId || !formData.startTime || !formData.startTimeLeg2) return;
             const seriesId = `series-${crypto.randomUUID()}`;
             const batch = writeBatch(db);
-            // CAMBIO: public/data
             const matchesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
             const leg1Ref = doc(matchesCollection);
             batch.set(leg1Ref, { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime, matchType: 'leg1', seriesId: seriesId });
             const leg2Ref = doc(matchesCollection);
-            batch.set(leg2Ref, { ...baseData, teamAId: formData.teamBId, teamBId: formData.teamAId, startTime: formData.startTimeLeg2, matchType: 'leg2', seriesId: seriesId });
+            const initialOddsLeg2 = calculateOdds(teams.find(t=>t.id===formData.teamBId), teams.find(t=>t.id===formData.teamAId));
+            batch.set(leg2Ref, { ...baseData, teamAId: formData.teamBId, teamBId: formData.teamAId, startTime: formData.startTimeLeg2, matchType: 'leg2', seriesId: seriesId, initialOdds: initialOddsLeg2 });
             await batch.commit();
         }
         setIsScheduling(false); 
@@ -1250,14 +1389,14 @@ export default function App() {
 
     return (
       <div>
-         <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-green-900">Calendario de Partidos</h2><Button onClick={() => setIsScheduling(!isScheduling)}>{isScheduling ? 'Cancelar' : <><Calendar size={16} /> Programar Partido</>}</Button></div>
+         <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-[#091F40]">Calendario de Partidos</h2><Button onClick={() => setIsScheduling(!isScheduling)}>{isScheduling ? 'Cancelar' : <><Calendar size={16} /> Programar Partido</>}</Button></div>
          {isScheduling && <Card className="p-6 mb-6 shadow-lg animate-in slide-in-from-top-2"><form onSubmit={handleSchedule} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select label="Tipo de Partido" options={[{value:'single', label:'Partido Único'}, {value:'twoLegged', label:'Ida y Vuelta'}]} value={formData.matchType} onChange={e=>setFormData({...formData, matchType: e.target.value})} className="md:col-span-2" />
             <Select label="Equipo Local (Ida)" options={[{value:'', label:'Local...'}, ...teams.map(t => ({value:t.id, label:t.name}))]} value={formData.teamAId} onChange={e=>setFormData({...formData, teamAId: e.target.value})} />
             <Select label="Equipo Visitante (Ida)" options={[{value:'', label:'Visita...'}, ...teams.filter(t=>t.id!==formData.teamAId).map(t => ({value:t.id, label:t.name}))]} value={formData.teamBId} onChange={e=>setFormData({...formData, teamBId: e.target.value})} />
             <Input label={formData.matchType === 'single' ? 'Fecha y Hora' : 'Fecha Partido Ida'} type="datetime-local" value={formData.startTime} onChange={e=>setFormData({...formData, startTime: e.target.value})} className={formData.matchType === 'single' ? 'md:col-span-2' : ''} />
             {formData.matchType === 'twoLegged' && ( <Input label="Fecha Partido Vuelta" type="datetime-local" value={formData.startTimeLeg2} onChange={e=>setFormData({...formData, startTimeLeg2: e.target.value})} /> )}
-            <label className="flex items-center gap-2 text-sm text-green-700 font-bold md:col-span-2"><input type="checkbox" checked={formData.autoStart} onChange={e=>setFormData({...formData, autoStart: e.target.checked})} className="accent-green-600 w-4 h-4" /> Iniciar partidos automáticamente</label>
+            <label className="flex items-center gap-2 text-sm text-[#009B3A] font-bold md:col-span-2"><input type="checkbox" checked={formData.autoStart} onChange={e=>setFormData({...formData, autoStart: e.target.checked})} className="accent-[#009B3A] w-4 h-4" /> Iniciar partidos automáticamente</label>
             <Button type="submit" className="md:col-span-2">Confirmar</Button>
          </form></Card>}
          <div className="grid gap-3">{matchesToDisplay.map(m => (
@@ -1275,90 +1414,46 @@ export default function App() {
   };
   
   const TournamentsView = ({ tournaments, allTeams, allMatches, user, onDeleteClick }) => {
-    const [selectedTournament, setSelectedTournament] = useState(null);
-    const [isCreating, setIsCreating] = useState(false);
-    const [newTournamentName, setNewTournamentName] = useState("");
+    const reyesTournament = tournaments.find(t => t.name === "COPA DE LOS REYES 2026");
 
-    const handleCreateTournament = async () => {
-        if (!user || !newTournamentName.trim()) return;
+    const handleCreateReyesCup = async () => {
+        if (!user) return;
         
-        // CAMBIO: public/data
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tournaments'), {
-            name: newTournamentName,
+            name: "COPA DE LOS REYES 2026",
             createdAt: serverTimestamp(),
             groups: [], 
             knockout: null 
         });
-        
-        setNewTournamentName("");
-        setIsCreating(false);
     };
     
-    if (selectedTournament) {
+    if (reyesTournament) {
         return (
             <TournamentDetailView 
-                tournament={selectedTournament}
-                onBack={() => setSelectedTournament(null)}
+                tournament={reyesTournament}
+                onBack={() => {}} 
                 user={user}
                 allTeams={allTeams}
                 allMatches={allMatches}
                 onDeleteTournament={onDeleteClick}
+                isSingleMode={true}
             />
         );
     }
 
     return (
-        <div className="animate-in fade-in duration-300">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-green-900">Torneos</h2>
-                <Button onClick={() => setIsCreating(!isCreating)}>
-                    {isCreating ? 'Cancelar' : <><Plus size={16} /> Nuevo Torneo</>}
-                </Button>
-            </div>
-
-            {isCreating && (
-                <Card className="p-6 mb-6 shadow-lg animate-in slide-in-from-top-2">
-                    <div className="flex gap-4">
-                        <Input 
-                            label="Nombre del Torneo" 
-                            placeholder="Ej: Copa de Verano 2026"
-                            value={newTournamentName}
-                            onChange={(e) => setNewTournamentName(e.target.value)}
-                        />
-                        <Button onClick={handleCreateTournament} className="self-end mb-3">Crear</Button>
-                    </div>
-                </Card>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tournaments.length === 0 && !isCreating && (
-                    <p className="text-gray-500">No hay torneos creados. ¡Crea uno nuevo!</p>
-                )}
-                {tournaments.map(t => (
-                    <div key={t.id} 
-                         className="bg-white border border-green-100 p-5 rounded-xl hover:border-green-400 hover:shadow-md transition-all cursor-pointer flex justify-between items-center"
-                         onClick={() => setSelectedTournament(t)}
-                    >
-                        <div>
-                            <div className="flex items-center gap-2 text-green-800">
-                                <Shield size={20} />
-                                <span className="text-lg font-bold">{t.name}</span>
-                            </div>
-                            <span className="text-xs text-gray-500 ml-7">{t.groups.length} Grupos, {t.knockout ? `${t.knockout.type} equipos` : 'Sin eliminatoria'}</span>
-                        </div>
-                        <Trash2 
-                            size={18} 
-                            className="text-gray-400 hover:text-red-600 transition-colors" 
-                            onClick={(e) => { e.stopPropagation(); onDeleteClick(t.id); }}
-                        />
-                    </div>
-                ))}
-            </div>
+        <div className="animate-in fade-in duration-300 flex flex-col items-center justify-center h-[500px]">
+            <Crown size={64} className="text-[#F58220] mb-4" />
+            <h2 className="text-3xl font-bold text-[#091F40] mb-2">Copa de los Reyes 2026</h2>
+            <p className="text-gray-500 mb-6 text-center max-w-md">La competición aún no ha sido inicializada. Haz clic abajo para comenzar la organización del torneo.</p>
+            <Button onClick={handleCreateReyesCup} className="text-lg px-8 py-3">
+                <Plus size={20} /> Inicializar Copa
+            </Button>
         </div>
     );
   };
   
-  const TournamentDetailView = ({ tournament, onBack, user, allTeams, allMatches, onDeleteTournament }) => {
+  const TournamentDetailView = ({ tournament, onBack, user, allTeams, allMatches, onDeleteTournament, isSingleMode }) => {
     const [view, setView] = useState('groups'); 
     const [isEditMode, setIsEditMode] = useState(true); 
     
@@ -1370,7 +1465,6 @@ export default function App() {
     const [thirdPlace, setThirdPlace] = useState(false); 
     const [koMatchDates, setKoMatchDates] = useState({}); 
 
-    // CAMBIO: public/data
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', tournament.id);
 
     const handleAddGroup = async () => {
@@ -1417,8 +1511,10 @@ export default function App() {
         }
         
         const group = tournament.groups.find(g => g.id === matchForm.groupId);
+        const tA = allTeams.find(t => t.id === matchForm.teamAId);
+        const tB = allTeams.find(t => t.id === matchForm.teamBId);
+        const initialOdds = calculateOdds(tA, tB);
 
-        // CAMBIO: public/data
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'matches'), {
             teamAId: matchForm.teamAId,
             teamBId: matchForm.teamBId,
@@ -1435,6 +1531,7 @@ export default function App() {
             jornada: matchForm.jornada || null, 
             seriesId: null,
             matchType: 'group', 
+            initialOdds: initialOdds
         });
         
         setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
@@ -1513,7 +1610,10 @@ export default function App() {
             return;
         }
 
-        // CAMBIO: public/data
+        const tA = allTeams.find(t => t.id === koMatch.teamA);
+        const tB = allTeams.find(t => t.id === koMatch.teamB);
+        const initialOdds = calculateOdds(tA, tB);
+
         const matchRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'matches'), {
             teamAId: koMatch.teamA,
             teamBId: koMatch.teamB,
@@ -1531,6 +1631,7 @@ export default function App() {
             jornada: null,
             seriesId: null,
             matchType: 'knockout', 
+            initialOdds: initialOdds
         });
 
         const newMatches = tournament.knockout.matches.map(m => {
@@ -1553,9 +1654,11 @@ export default function App() {
         <div className="animate-in fade-in duration-300">
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
-                <Button variant="secondary" onClick={onBack}>
-                    <ArrowLeft size={16} /> Volver a Torneos
-                </Button>
+                {!isSingleMode && (
+                    <Button variant="secondary" onClick={onBack}>
+                        <ArrowLeft size={16} /> Volver a Torneos
+                    </Button>
+                )}
                 
                 <ToggleSwitch 
                     isEnabled={isEditMode}
@@ -1566,9 +1669,9 @@ export default function App() {
                     IconRight={Edit}
                 />
                 
-                <h2 className="text-2xl font-bold text-green-900 hidden md:block">{tournament.name}</h2>
+                <h2 className="text-2xl font-bold text-[#091F40] hidden md:block">{tournament.name}</h2>
                 
-                {isEditMode && (
+                {isEditMode && !isSingleMode && (
                     <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
                         <Trash2 size={16} /> Borrar Torneo
                     </Button>
@@ -1576,11 +1679,11 @@ export default function App() {
             </div>
             
             {/* Tabs */}
-            <div className="flex gap-2 mb-6 border-b border-green-200">
-                <button onClick={() => setView('groups')} className={`pb-2 px-4 text-sm font-bold ${view === 'groups' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500'}`}>
+            <div className="flex gap-2 mb-6 border-b border-gray-200">
+                <button onClick={() => setView('groups')} className={`pb-2 px-4 text-sm font-bold ${view === 'groups' ? 'text-[#009B3A] border-b-2 border-[#009B3A]' : 'text-gray-500'}`}>
                     Fase de Grupos
                 </button>
-                <button onClick={() => setView('knockout')} className={`pb-2 px-4 text-sm font-bold ${view === 'knockout' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-500'}`}>
+                <button onClick={() => setView('knockout')} className={`pb-2 px-4 text-sm font-bold ${view === 'knockout' ? 'text-[#009B3A] border-b-2 border-[#009B3A]' : 'text-gray-500'}`}>
                     Eliminatoria
                 </button>
             </div>
@@ -1590,11 +1693,11 @@ export default function App() {
                 <div className="space-y-8">
                     {/* Formulario Añadir Grupo */}
                     {isEditMode && (
-                        <Card className="p-4 bg-gray-50">
-                            <h3 className="font-bold text-green-800 mb-2">Añadir Nuevo Grupo</h3>
+                        <Card className="p-4 bg-slate-50">
+                            <h3 className="font-bold text-[#091F40] mb-2">Añadir Nuevo Grupo</h3>
                             <div className="flex flex-col md:flex-row gap-4 items-end">
                                 <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-green-600">Nombre del Grupo</label>
+                                    <label className="text-[10px] font-bold text-[#009B3A]">Nombre del Grupo</label>
                                     <SmallInput 
                                         placeholder="Ej: Grupo A" 
                                         value={groupForm.name}
@@ -1602,7 +1705,7 @@ export default function App() {
                                     />
                                 </div>
                                 <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-green-600">Cupos Clasificación</label>
+                                    <label className="text-[10px] font-bold text-[#009B3A]">Cupos Clasificación</label>
                                     <SmallInput 
                                         type="number" 
                                         min="1" max="4" 
@@ -1624,37 +1727,37 @@ export default function App() {
 
                         return (
                             <Card key={group.id} className="p-6">
-                                <h3 className="text-xl font-bold text-red-700 mb-4">{group.name}</h3>
+                                <h3 className="text-xl font-bold text-[#091F40] mb-4">{group.name}</h3>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     {/* Izquierda: Tabla y Equipos */}
                                     <div>
-                                        <h4 className="font-bold text-green-800 mb-3">Tabla de Posiciones</h4>
+                                        <h4 className="font-bold text-[#091F40] mb-3">Tabla de Posiciones</h4>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full text-sm divide-y divide-gray-200">
-                                                <thead className="bg-green-50">
+                                                <thead className="bg-[#091F40] text-white">
                                                     <tr>
-                                                        <th className="px-2 py-2 text-left text-xs font-bold text-green-700 uppercase tracking-wider">#</th>
-                                                        <th className="px-2 py-2 text-left text-xs font-bold text-green-700 uppercase tracking-wider">Equipo</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">PJ</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">G</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">E</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">P</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">DG</th>
-                                                        <th className="px-2 py-2 text-center text-xs font-bold text-green-700 uppercase tracking-wider">Pts</th>
+                                                        <th className="px-2 py-2 text-left text-xs font-bold uppercase tracking-wider">#</th>
+                                                        <th className="px-2 py-2 text-left text-xs font-bold uppercase tracking-wider">Equipo</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wider">PJ</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wider">G</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wider">E</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wider">P</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wider">DG</th>
+                                                        <th className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wider">Pts</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="bg-white divide-y divide-gray-100">
                                                     {standings.map((t, index) => (
                                                         <tr key={t.id} className={index < group.settings.classifiedSlots ? 'bg-green-50' : ''}>
-                                                            <td className="px-2 py-2 whitespace-nowrap text-center">
+                                                            <td className="px-2 py-2 whitespace-nowrap text-center text-[#091F40]">
                                                                 {index + 1}
-                                                                {index < group.settings.classifiedSlots && <CheckSquare size={14} className="text-green-600 inline-block ml-1" />}
+                                                                {index < group.settings.classifiedSlots && <CheckSquare size={14} className="text-[#009B3A] inline-block ml-1" />}
                                                             </td>
-                                                            <td className="px-2 py-2 whitespace-nowrap font-medium text-green-900 flex items-center gap-2">
+                                                            <td className="px-2 py-2 whitespace-nowrap font-medium text-[#091F40] flex items-center gap-2">
                                                                 <img src={t.logo || `https://ui-avatars.com/api/?name=${t.name}`} className="w-5 h-5 rounded-full object-cover" />
                                                                 {t.name}
                                                                 {isEditMode && (
-                                                                    <Trash2 size={14} className="text-gray-400 hover:text-red-600 cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
+                                                                    <Trash2 size={14} className="text-gray-400 hover:text-[#EF4135] cursor-pointer" onClick={() => handleRemoveTeamFromGroup(group.id, t.id)} />
                                                                 )}
                                                             </td>
                                                             <td className="px-2 py-2 whitespace-nowrap text-center">{t.P}</td>
@@ -1682,11 +1785,11 @@ export default function App() {
                                     </div>
 
                                     {/* Derecha: Partidos */}
-                                    <div className={isEditMode ? "border-l border-green-100 pl-8" : ""}>
+                                    <div className={isEditMode ? "border-l border-slate-100 pl-8" : ""}>
                                         {isEditMode && (
                                             <>
-                                                <h4 className="font-bold text-green-800 mb-3">Programar Partido</h4>
-                                                <div className="space-y-2 p-3 bg-green-50 rounded-lg">
+                                                <h4 className="font-bold text-[#091F40] mb-3">Programar Partido</h4>
+                                                <div className="space-y-2 p-3 bg-slate-50 rounded-lg">
                                                     <SmallSelect options={[{ value: '', label: 'Local...' }, ...teamsInGroup.map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamAId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamAId: e.target.value, teamBId: e.target.value === matchForm.teamBId ? '' : matchForm.teamBId})} />
                                                     <SmallSelect options={[{ value: '', label: 'Visitante...' }, ...teamsInGroup.filter(t => t.id !== matchForm.teamAId).map(t => ({ value: t.id, label: t.name }))]} value={matchForm.groupId === group.id ? matchForm.teamBId : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, teamBId: e.target.value})} />
                                                     <SmallInput type="datetime-local" value={matchForm.groupId === group.id ? matchForm.startTime : ''} onChange={e => setMatchForm({...matchForm, groupId: group.id, startTime: e.target.value})} />
@@ -1696,7 +1799,7 @@ export default function App() {
                                             </>
                                         )}
                                         
-                                        <h4 className="font-bold text-green-800 mt-6 mb-3">Partidos del Grupo</h4>
+                                        <h4 className="font-bold text-[#091F40] mt-6 mb-3">Partidos del Grupo</h4>
                                         <div className={`space-y-2 ${isEditMode ? 'max-h-48 overflow-y-auto' : ''}`}>
                                             {groupMatches.length === 0 && <p className="text-xs text-gray-500">No hay partidos programados para este grupo.</p>}
                                             {groupMatches.map(m => {
@@ -1707,7 +1810,7 @@ export default function App() {
                                                         <div className="flex justify-between items-center">
                                                             <div className="flex items-center gap-2">
                                                                 {m.jornada && <span className="text-xs font-bold text-gray-400">J{m.jornada}</span>}
-                                                                <span className="font-bold">{tA?.shortName || '?'}</span> {m.scoreA} - {m.scoreB} <span className="font-bold">{tB?.shortName || '?'}</span>
+                                                                <span className="font-bold text-[#091F40]">{tA?.shortName || '?'}</span> {m.scoreA} - {m.scoreB} <span className="font-bold text-[#091F40]">{tB?.shortName || '?'}</span>
                                                             </div>
                                                             <Badge status={m.status} period={m.period} />
                                                         </div>
@@ -1730,11 +1833,11 @@ export default function App() {
                     {/* Formulario Configurar */}
                     {isEditMode && (
                         <Card className="p-6">
-                            <h3 className="font-bold text-green-800 mb-3">Configurar Eliminatoria</h3>
+                            <h3 className="font-bold text-[#091F40] mb-3">Configurar Eliminatoria</h3>
                             <div className="flex flex-col gap-2">
                                 <div className="flex gap-4 items-end">
                                     <div className="flex-1">
-                                        <label className="text-[10px] font-bold text-green-600">Equipos en Fase Final</label>
+                                        <label className="text-[10px] font-bold text-[#009B3A]">Equipos en Fase Final</label>
                                         <SmallSelect 
                                             options={[
                                                 {value: 4, label: '4 Equipos (Semifinal)'},
@@ -1747,12 +1850,12 @@ export default function App() {
                                     </div>
                                     <Button onClick={handleSetupKnockout}><Trello size={16} /> Generar Cuadro</Button>
                                 </div>
-                                <label className="flex items-center gap-2 text-sm text-green-700 font-bold mt-2">
+                                <label className="flex items-center gap-2 text-sm text-[#009B3A] font-bold mt-2">
                                     <input 
                                         type="checkbox" 
                                         checked={thirdPlace} 
                                         onChange={e => setThirdPlace(e.target.checked)}
-                                        className="accent-green-600 w-4 h-4"
+                                        className="accent-[#009B3A] w-4 h-4"
                                     /> 
                                     Incluir partido por 3er Puesto
                                 </label>
@@ -1762,7 +1865,7 @@ export default function App() {
 
                     {tournament.knockout && (
                         <Card className="p-6">
-                             <h3 className="text-xl font-bold text-red-700 mb-4">Cuadro de Eliminatoria</h3>
+                             <h3 className="text-xl font-bold text-[#091F40] mb-4">Cuadro de Eliminatoria</h3>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {tournament.knockout.matches.map(koMatch => {
                                     const linkedMatch = koMatch.matchId ? allMatches.find(m => m.id === koMatch.matchId) : null;
@@ -1770,9 +1873,9 @@ export default function App() {
                                     const teamBObj = allTeams.find(t => t.id === koMatch.teamB);
 
                                     return (
-                                        <div key={koMatch.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                        <div key={koMatch.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                                             <div className="flex justify-between items-center mb-2">
-                                                <div className="font-bold text-sm text-green-800">{koMatch.name}</div>
+                                                <div className="font-bold text-sm text-[#091F40]">{koMatch.name}</div>
                                                 {linkedMatch && (
                                                     <div className="flex items-center gap-2">
                                                         <Badge status={linkedMatch.status} period={linkedMatch.period} />
@@ -1810,26 +1913,26 @@ export default function App() {
                                                     )}
                                                 </div>
                                             ) : (
-                                                <div className="bg-white rounded border border-gray-100 p-2">
+                                                <div className="bg-white rounded border border-gray-200 p-2">
                                                     {linkedMatch && (
                                                         <div className="text-[10px] text-center text-gray-500 mb-1 border-b border-gray-50 pb-1">
                                                             {formatDate(linkedMatch.startTime)}
                                                         </div>
                                                     )}
                                                     <div className="flex justify-between items-center py-1">
-                                                        <span className={!koMatch.teamA ? 'text-gray-400' : 'font-bold text-green-900'}>
+                                                        <span className={!koMatch.teamA ? 'text-gray-400' : 'font-bold text-[#091F40]'}>
                                                             {teamAObj?.name || 'A definir'}
                                                         </span>
                                                         {linkedMatch && <span className="font-bold text-lg">{linkedMatch.scoreA}</span>}
                                                     </div>
                                                     <div className="flex justify-between items-center py-1 border-t border-gray-50">
-                                                        <span className={!koMatch.teamB ? 'text-gray-400' : 'font-bold text-green-900'}>
+                                                        <span className={!koMatch.teamB ? 'text-gray-400' : 'font-bold text-[#091F40]'}>
                                                             {teamBObj?.name || 'A definir'}
                                                         </span>
                                                         {linkedMatch && <span className="font-bold text-lg">{linkedMatch.scoreB}</span>}
                                                     </div>
                                                     {linkedMatch?.penaltyShootout?.winner && (
-                                                        <div className="text-xs text-blue-600 font-bold mt-1 text-center">
+                                                        <div className="text-xs text-[#091F40] font-bold mt-1 text-center">
                                                             Gana {linkedMatch.penaltyShootout.winner === 'A' ? teamAObj?.shortName : teamBObj?.shortName} en Penales
                                                         </div>
                                                     )}
@@ -1852,10 +1955,10 @@ export default function App() {
 
 
   if (!user) return (
-    <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center text-green-800 font-sans p-4">
-      <div className="animate-spin text-green-600 mb-4"><Activity size={32} /></div>
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-[#091F40] font-sans p-4">
+      <div className="animate-spin text-[#009B3A] mb-4"><Activity size={32} /></div>
       <div className="font-bold text-lg animate-pulse">Cargando Sistema de Táctica...</div>
-      <div className="text-sm text-green-600 mt-2">Autenticando con Firebase</div>
+      <div className="text-sm text-gray-500 mt-2">Autenticando con Firebase</div>
     </div>
   );
   
@@ -1867,7 +1970,7 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-lime-50 text-green-900 font-sans pb-20 md:pb-0 selection:bg-green-200">
+    <div className="min-h-screen bg-[#F0FFF4] text-[#091F40] font-sans pb-20 md:pb-0 selection:bg-[#009B3A] selection:text-white">
       <ConfirmModal 
         isOpen={!!deleteTeamId} 
         title="¿Eliminar Club?" 
@@ -1902,40 +2005,43 @@ export default function App() {
         onConfirm={handleUpdateMatchDate}
       />
 
-      <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-green-800 flex-col p-6 z-50 shadow-2xl border-r border-green-700">
-        <div className="flex flex-col items-center mb-10 text-white border-b border-green-700 pb-6">
+      <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-gradient-to-b from-[#009e5e] to-[#061a2b] flex-col p-6 z-50 shadow-2xl border-r border-[#009B3A]">
+        <div className="flex flex-col items-center mb-10 text-white border-b border-[#009B3A]/30 pb-6">
           <img 
               src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
               className="w-24 h-24 object-contain"
               alt="Logo"
           />
-          <h1 className="text-center font-black italic text-lg leading-tight tracking-tight">COPA DE LOS <br/><span className="text-red-500 bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES 2026</span></h1>
+          <h1 className="text-center font-black italic text-lg leading-tight tracking-tight mt-2">COPA DE LOS <br/><span className="text-[#EF4135] bg-white px-1 rounded-sm inline-block mt-1 transform -skew-x-12 shadow-sm">REYES 2026</span></h1>
         </div>
         <nav className="space-y-2 flex-1">
           {navItems.map(item => (
-            <button key={item.id} onClick={() => { setView(item.id); setSelectedMatchId(null); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-bold uppercase tracking-wide ${view === item.id ? 'bg-white text-green-800 shadow-md' : 'text-green-100 hover:bg-green-700 hover:text-white'}`}>
-              <item.icon size={18} className={view === item.id ? "text-red-600" : ""} /> {item.label}
+            <button key={item.id} onClick={() => { setView(item.id); setSelectedMatchId(null); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-bold uppercase tracking-wide ${view === item.id ? 'bg-white text-[#091F40] shadow-md' : 'text-white/80 hover:bg-white/10 hover:text-white'}`}>
+              <item.icon size={18} className={view === item.id ? "text-[#F58220]" : ""} /> {item.label}
             </button>
           ))}
         </nav>
-        <div className="text-[10px] text-center text-green-300 uppercase font-bold tracking-wider">v5.3 - Final Bracket</div>
+        <div className="text-[10px] text-center text-white/50 uppercase font-bold tracking-wider">v5.4 - Brazil Edition</div>
       </div>
-      <div className="md:hidden bg-green-800 p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
+      
+      <div className="md:hidden bg-gradient-to-r from-[#009B3A] to-[#091F40] p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
          <div className="flex items-center gap-2 text-white font-black italic"><img 
               src="https://i.postimg.cc/T1xy0cy4/IMG-4967.png" 
-              className="w-20 h-20 object-contain"
+              className="w-10 h-10 object-contain"
               alt="Logo"
-            /> <span className="text-3xl">COPA REYES</span></div>
+            /> <span className="text-xl">COPA REYES</span></div>
          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-white">{mobileMenuOpen ? <X /> : <Menu />}</button>
       </div>
+      
       {mobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 bg-green-900/95 z-50 flex flex-col items-center justify-center gap-8">
+          <div className="md:hidden fixed inset-0 bg-[#091F40]/95 z-50 flex flex-col items-center justify-center gap-8 backdrop-blur-md">
               <button onClick={() => setMobileMenuOpen(false)} className="absolute top-4 right-4 text-white"><X size={32} /></button>
               {navItems.map(item => (
-                <button key={item.id} onClick={() => { setView(item.id); setSelectedMatchId(null); setMobileMenuOpen(false); }} className="text-2xl font-bold text-white uppercase tracking-widest hover:text-yellow-400">{item.label}</button>
+                <button key={item.id} onClick={() => { setView(item.id); setSelectedMatchId(null); setMobileMenuOpen(false); }} className="text-2xl font-bold text-white uppercase tracking-widest hover:text-[#F58220] transition-colors">{item.label}</button>
               ))}
           </div>
       )}
+      
       <main className="md:pl-64 p-4 md:p-8 max-w-6xl mx-auto">
          {selectedMatchId ? <MatchDetail match={matches.find(m => m.id === selectedMatchId)} onBack={() => setSelectedMatchId(null)} /> : (
             <>
