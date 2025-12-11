@@ -19,7 +19,9 @@ import {
   serverTimestamp,
   writeBatch,
   arrayUnion, 
-  arrayRemove 
+  arrayRemove,
+  where,
+  getDocs
 } from 'firebase/firestore';
 import { 
   Trophy, 
@@ -53,7 +55,8 @@ import {
   Save,
   Settings,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  RotateCcw
 } from 'lucide-react';
 
 
@@ -115,18 +118,18 @@ const formatDate = (dateString) => {
     });
 };
 
-// --- MOTOR DE SIMULACIÓN DE PROBABILIDADES (TUNEADO) ---
+// --- MOTOR DE SIMULACIÓN DE PROBABILIDADES (MODO EXTREMO) ---
 const simulateQuickMatch = (probA, probB, startMinute = 0, currentScoreA = 0, currentScoreB = 0) => {
     let sA = currentScoreA;
     let sB = currentScoreB;
     
-    // Probabilidad base de gol (ajustada)
     const baseGoalChance = 0.10; 
 
     for (let m = startMinute; m < 90; m++) {
-        // AJUSTE 1: Mayor peso a la probabilidad del equipo en la generación de ataque
-        let attackA = (probA * 0.85); // Antes 0.6
-        let attackB = (probB * 0.85); // Antes 0.6
+        // AJUSTE EXTREMO 1: Diferencia masiva en generación de juego
+        // Si probA es 0.8 y probB es 0.2, A tendrá 4 veces mas chances de atacar
+        let attackA = Math.pow(probA, 2); 
+        let attackB = Math.pow(probB, 2);
         
         const totalAttack = attackA + attackB;
         const random = Math.random();
@@ -135,11 +138,11 @@ const simulateQuickMatch = (probA, probB, startMinute = 0, currentScoreA = 0, cu
             const isTeamA = Math.random() * totalAttack < attackA;
             const diff = isTeamA ? probA - probB : probB - probA;
             
-            // AJUSTE 2: La diferencia impacta más en la chance de gol
-            // Si eres mucho mejor, tienes mucha más chance de convertir
-            let goalChance = baseGoalChance + (diff * 0.18); // Antes 0.08
+            // AJUSTE EXTREMO 2: Conversión letal para el fuerte
+            // Si la diferencia es grande, la chance de gol se dispara
+            let goalChance = baseGoalChance + (diff * 0.45); // Aumentado drásticamente
             
-            if (Math.random() < Math.max(0.01, goalChance)) {
+            if (Math.random() < Math.max(0.005, goalChance)) {
                 if (isTeamA) sA++; else sB++;
             }
         }
@@ -430,6 +433,9 @@ export default function App() {
   const [editDateMatchId, setEditDateMatchId] = useState(null);
   const [editDateCurrent, setEditDateCurrent] = useState('');
 
+  // Nuevo estado para reiniciar torneo
+  const [resetTournamentId, setResetTournamentId] = useState(null);
+
   // Auth
   useEffect(() => {
     const initAuth = async () => {
@@ -591,16 +597,20 @@ export default function App() {
       const probA = parseFloat(teamA.probability); 
       const probB = parseFloat(teamB.probability);
       
-      // AJUSTE: La posesión depende más de la fuerza
-      let targetPossession = 50 + (probA - probB) * 50; // Antes 35
-      if (teamA.style === 'possession') targetPossession += 15;
-      if (teamB.style === 'possession') targetPossession -= 15;
-      stats.possession = Math.round(stats.possession + ((targetPossession - stats.possession) * 0.1) + (Math.random()*4-2));
+      // AJUSTE EXTREMO: La posesión se polariza brutalmente
+      let targetPossession = 50 + (probA - probB) * 90; // Antes 35, luego 50, ahora 90!
+      if (targetPossession > 95) targetPossession = 95;
+      if (targetPossession < 5) targetPossession = 5;
+
+      if (teamA.style === 'possession') targetPossession += 10;
+      if (teamB.style === 'possession') targetPossession -= 10;
+      stats.possession = Math.round(stats.possession + ((targetPossession - stats.possession) * 0.15) + (Math.random()*4-2));
 
       if (Math.random() < 0.22) { 
-          // AJUSTE: El equipo fuerte genera más jugadas
-          let attackA = (probA * 0.7) + (stats.possession/200); // Antes 0.5
-          let attackB = (probB * 0.7) + ((100-stats.possession)/200);
+          // AJUSTE EXTREMO: El fuerte tiene casi todo el ataque
+          let attackA = Math.pow(probA, 2) + (stats.possession/150); 
+          let attackB = Math.pow(probB, 2) + ((100-stats.possession)/150);
+          
           const isTeamA = Math.random() * (attackA + attackB) < attackA;
           const attackingTeamName = isTeamA ? teamA.name : teamB.name;
           const roster = isTeamA ? lineups.teamA : lineups.teamB;
@@ -611,9 +621,9 @@ export default function App() {
              if (Math.random() < 0.35) { 
                  if (isTeamA) stats.onTargetA++; else stats.onTargetB++;
                  
-                 // AJUSTE: La definición es crítica
+                 // AJUSTE EXTREMO: Si eres mucho mejor, es gol seguro
                  const diff = isTeamA ? probA - probB : probB - probA;
-                 let goalChance = 0.40 + (diff * 0.3); // Antes 0.15
+                 let goalChance = 0.35 + (diff * 0.7); // Antes 0.3
 
                  if (Math.random() < goalChance) {
                      updates[isTeamA ? 'scoreA' : 'scoreB'] = (match[isTeamA ? 'scoreA' : 'scoreB'] || 0) + 1;
@@ -719,6 +729,31 @@ export default function App() {
           startTime: newDate
       });
       setEditDateMatchId(null);
+  };
+
+  // --- NUEVO: FUNCIÓN PARA REINICIAR TORNEO ---
+  const handleResetTournament = async (tournamentId) => {
+      if (!user) return;
+      
+      // 1. Resetear estructura del torneo
+      const tourneyRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', tournamentId);
+      await updateDoc(tourneyRef, {
+          groups: [],
+          knockout: null
+      });
+
+      // 2. Borrar partidos asociados a este torneo
+      const matchesRef = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
+      const q = query(matchesRef, where("tournamentId", "==", tournamentId));
+      const snapshot = await getDocs(q);
+      
+      const batch = writeBatch(db);
+      snapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref);
+      });
+      await batch.commit();
+      
+      setResetTournamentId(null);
   };
 
 
@@ -1457,6 +1492,7 @@ export default function App() {
   const TournamentDetailView = ({ tournament, onBack, user, allTeams, allMatches, onDeleteTournament, isSingleMode }) => {
     const [view, setView] = useState('groups'); 
     const [isEditMode, setIsEditMode] = useState(true); 
+    const [isResetting, setIsResetting] = useState(false); // Estado para el modal de reset
     
     const [groupForm, setGroupForm] = useState({ name: '', classifiedSlots: 2 });
     const [teamToAdd, setTeamToAdd] = useState({ groupId: null, teamId: '' });
@@ -1645,6 +1681,28 @@ export default function App() {
         await updateDoc(docRef, { knockout: { ...tournament.knockout, matches: newMatches } });
     };
 
+    // --- LÓGICA DE REINICIO ---
+    const confirmReset = async () => {
+        // 1. Resetear torneo
+        await updateDoc(docRef, {
+            groups: [],
+            knockout: null
+        });
+
+        // 2. Borrar partidos
+        const matchesRef = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
+        const q = query(matchesRef, where("tournamentId", "==", tournament.id));
+        const snapshot = await getDocs(q);
+        
+        const batch = writeBatch(db);
+        snapshot.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+        
+        setIsResetting(false);
+    };
+
     const tournamentMatches = allMatches.filter(m => m.tournamentId === tournament.id);
     const teamOptions = [
         { value: '', label: 'A definir...' },
@@ -1653,6 +1711,14 @@ export default function App() {
 
     return (
         <div className="animate-in fade-in duration-300">
+            <ConfirmModal 
+                isOpen={isResetting}
+                onClose={() => setIsResetting(false)}
+                onConfirm={confirmReset}
+                title="¿Reiniciar Torneo?"
+                message="¡Atención! Esto eliminará todos los grupos, fases eliminatorias y partidos asociados a la copa. Esta acción no se puede deshacer."
+            />
+
             {/* Header */}
             <div className="flex justify-between items-center mb-6">
                 {!isSingleMode && (
@@ -1672,10 +1738,18 @@ export default function App() {
                 
                 <h2 className="text-2xl font-bold text-[#091F40] hidden md:block">{tournament.name}</h2>
                 
-                {isEditMode && !isSingleMode && (
-                    <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
-                        <Trash2 size={16} /> Borrar Torneo
-                    </Button>
+                {isEditMode && (
+                    <div className="flex gap-2">
+                        {/* Botón de Reinicio */}
+                        <Button variant="danger" onClick={() => setIsResetting(true)} className="bg-red-600 hover:bg-red-700">
+                            <RotateCcw size={16} /> Reiniciar Copa
+                        </Button>
+                        {!isSingleMode && (
+                            <Button variant="danger" onClick={() => onDeleteTournament(tournament.id)}>
+                                <Trash2 size={16} /> Borrar
+                            </Button>
+                        )}
+                    </div>
                 )}
             </div>
             
@@ -1720,6 +1794,11 @@ export default function App() {
                     )}
                     
                     {/* Lista de Grupos */}
+                    {tournament.groups.length === 0 && (
+                        <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
+                            <p className="text-gray-400">No hay grupos configurados. ¡Añade uno para empezar!</p>
+                        </div>
+                    )}
                     {tournament.groups.map(group => {
                         const standings = calculateStandings(group.id, group.teams, allTeams, tournamentMatches);
                         const groupMatches = tournamentMatches.filter(m => m.groupId === group.id).reverse();
@@ -1864,7 +1943,7 @@ export default function App() {
                         </Card>
                     )}
 
-                    {tournament.knockout && (
+                    {tournament.knockout ? (
                         <Card className="p-6">
                              <h3 className="text-xl font-bold text-[#091F40] mb-4">Cuadro de Eliminatoria</h3>
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1947,6 +2026,10 @@ export default function App() {
                                 })}
                              </div>
                         </Card>
+                    ) : (
+                        <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
+                            <p className="text-gray-400">Aún no se ha generado el cuadro de eliminatorias.</p>
+                        </div>
                     )}
                 </div>
             )}
