@@ -56,21 +56,20 @@ import {
   Settings,
   TrendingUp,
   BarChart3,
-  RotateCcw
+  RotateCcw,
+  Hourglass
 } from 'lucide-react';
 
- 
-   const firebaseConfig = {
-       apiKey: import.meta.env.VITE_API_KEY,
-       authDomain: import.meta.env.VITE_AUTH_DOMAIN,
-       projectId: import.meta.env.VITE_PROJECT_ID,
-       storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
-       messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
-       appId: import.meta.env.VITE_APP_ID
-   };
-   const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
-
-
+// --- CONFIGURACIÓN FIREBASE CORREGIDA ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+    apiKey: "demo-key",
+    authDomain: "demo.firebaseapp.com",
+    projectId: "demo-project",
+    storageBucket: "demo.appspot.com",
+    messagingSenderId: "12345",
+    appId: "1:12345:web:12345"
+};
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -117,6 +116,36 @@ const formatDate = (dateString) => {
         minute: '2-digit'
     });
 };
+
+// Hook para cuenta regresiva
+const useCountdown = (targetDate) => {
+    const calculateTimeLeft = () => {
+        const difference = +new Date(targetDate) - +new Date();
+        let timeLeft = {};
+
+        if (difference > 0) {
+            timeLeft = {
+                days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+                hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+                minutes: Math.floor((difference / 1000 / 60) % 60),
+                seconds: Math.floor((difference / 1000) % 60),
+            };
+        }
+        return timeLeft;
+    };
+
+    const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setTimeLeft(calculateTimeLeft());
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [targetDate]);
+
+    return timeLeft;
+};
+
 
 // --- MOTOR DE SIMULACIÓN DE PROBABILIDADES (MODO EXTREMO) ---
 const simulateQuickMatch = (probA, probB, startMinute = 0, currentScoreA = 0, currentScoreB = 0) => {
@@ -303,19 +332,28 @@ const Badge = ({ status, period }) => {
     scheduled: "bg-slate-100 text-slate-600 border border-slate-200",
     live: "bg-[#EF4135] text-white shadow-md shadow-red-200 animate-pulse",
     halftime: "bg-[#F58220] text-white font-bold",
+    break_90: "bg-[#091F40] text-white font-bold",
+    break_et: "bg-[#091F40] text-white font-bold",
     penalties: "bg-[#091F40] text-white shadow-md shadow-slate-300 animate-pulse",
     finished: "bg-[#009B3A] text-white",
   };
   const labels = {
     scheduled: "PROGRAMADO",
-    live: period === '1T' ? "EN JUEGO (1T)" : "EN JUEGO (2T)",
+    live: period === '1T' ? "EN JUEGO (1T)" : period === '2T' ? "EN JUEGO (2T)" : period === '1TE' ? "PRÓRROGA (1T)" : "PRÓRROGA (2T)",
     halftime: "MEDIO TIEMPO",
+    break_90: "FIN 90' - ESPERANDO PRÓRROGA",
+    break_et: "CAMBIO DE LADO",
     penalties: "¡PENALES!",
     finished: "FINALIZADO",
   };
+  // Fallback si el status es 'live' y el periodo no machea exactamente los anteriores (aunque debería)
+  let label = labels[status] || status;
+  if (status === 'live' && period === '1TE') label = "PRÓRROGA (1T)";
+  if (status === 'live' && period === '2TE') label = "PRÓRROGA (2T)";
+
   return (
     <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider shadow-sm ${styles[status] || styles.scheduled}`}>
-      {labels[status] || status}
+      {label}
     </span>
   );
 };
@@ -498,7 +536,7 @@ export default function App() {
       matches.forEach(match => {
         if (match.status === 'scheduled' && match.autoStart) {
            if (new Date() >= new Date(match.startTime)) startMatch(match);
-        } else if (match.status === 'live' || match.status === 'halftime') {
+        } else if (['live', 'halftime', 'break_90', 'break_et'].includes(match.status)) {
           simulateStep(match);
         }
       });
@@ -539,6 +577,8 @@ export default function App() {
     const stats = { ...match.stats };
     const lineups = JSON.parse(JSON.stringify(match.lineups)); 
     
+    // --- MANEJO DE INTERVALOS (Medio Tiempo, Fin 90, Entre Prórrogas) ---
+    
     if (match.status === 'halftime') {
       const newCounter = (match.halftimeCounter || 0) + 1;
       if (newCounter >= 15) {
@@ -550,51 +590,164 @@ export default function App() {
       return;
     }
 
+    if (match.status === 'break_90') {
+      // 3 minutos de intervalo entre fin del partido y 1T Prórroga
+      const newCounter = (match.breakCounter || 0) + 1;
+      if (newCounter >= 3) { // 3 minutos
+          updates = { 
+              status: 'live', 
+              period: '1TE', 
+              currentMinute: 90, 
+              breakCounter: 0, 
+              addedTime: Math.floor(Math.random()*2)+1, // 1-2 minutos
+              events: [...newEvents, { type: 'whistle', minute: 90, text: '¡Arranca el PRIMER TIEMPO de la PRÓRROGA!' }] 
+          };
+      } else {
+          updates = { breakCounter: newCounter };
+      }
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
+      return;
+    }
+
+    if (match.status === 'break_et') {
+      // 2 minutos de intervalo entre 1T Prórroga y 2T Prórroga
+      const newCounter = (match.breakCounter || 0) + 1;
+      if (newCounter >= 2) { // 2 minutos
+          updates = { 
+              status: 'live', 
+              period: '2TE', 
+              currentMinute: 105, 
+              breakCounter: 0, 
+              addedTime: Math.floor(Math.random()*2)+1, // 1-2 minutos
+              events: [...newEvents, { type: 'whistle', minute: 105, text: '¡Arranca el SEGUNDO TIEMPO de la PRÓRROGA!' }] 
+          };
+      } else {
+          updates = { breakCounter: newCounter };
+      }
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
+      return;
+    }
+
     const currentMin = match.currentMinute;
     const nextMin = currentMin + 1;
-    const isFirstHalf = match.period === '1T';
-    const regularTimeEnd = isFirstHalf ? 45 : 90;
+    
+    // Determinar fin de periodo
+    let regularTimeEnd;
+    let periodName = match.period;
+    
+    if (periodName === '1T') regularTimeEnd = 45;
+    else if (periodName === '2T') regularTimeEnd = 90;
+    else if (periodName === '1TE') regularTimeEnd = 105;
+    else if (periodName === '2TE') regularTimeEnd = 120;
+
     const maxTime = regularTimeEnd + (match.addedTime || 0);
 
-    // --- FIN DE PARTIDO ---
+    // --- FIN DE PERIODO / PARTIDO ---
     if (currentMin >= maxTime) {
-      if (isFirstHalf) {
+      if (periodName === '1T') {
         updates = { status: 'halftime', period: 'HT', halftimeCounter: 0, events: [...newEvents, { type: 'whistle', minute: currentMin, text: `Fin del 1T (+${match.addedTime}')` }] };
-      } else {
-        newEvents.push({ type: 'whistle', minute: currentMin, text: `¡FINAL DEL PARTIDO! (+${match.addedTime}')` });
-        updates.events = newEvents;
-        
+      } else if (periodName === '2T') {
+        // Fin de los 90 minutos
+        const isTie = match.scoreA === match.scoreB;
+        let goToExtraTime = false;
+        let goToPenalties = false;
+        let isFinished = true;
+
         if (match.matchType === 'group') {
-            updates.status = 'finished';
-        }
-        else if (match.matchType === 'single' || match.matchType === 'knockout') {
-            if (match.scoreA === match.scoreB) {
-              updates.status = 'penalties';
-              updates.penaltyShootout = getInitialPenaltyShootout();
-              newEvents.push({ type: 'whistle', minute: 90, text: '¡El partido termina en empate! Habrá tanda de penales.' });
-            } else {
-              updates.status = 'finished';
-            }
-        } else if (match.matchType === 'leg1') {
-            updates.status = 'finished';
+             isFinished = true;
+        } else if (match.matchType === 'single' || match.matchType === 'knockout') {
+             if (isTie) {
+                 if (match.definitionMode === 'et_penalties') {
+                     goToExtraTime = true;
+                 } else {
+                     goToPenalties = true;
+                 }
+                 isFinished = false;
+             }
         } else if (match.matchType === 'leg2') {
-            const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
-            if (!leg1) {
-                updates.status = 'finished';
-            } else {
-                const aggA = leg1.scoreA + match.scoreB;
-                const aggB = leg1.scoreB + match.scoreA;
-                if (aggA === aggB) {
-                  updates.status = 'penalties';
-                  updates.penaltyShootout = getInitialPenaltyShootout();
-                  newEvents.push({ type: 'whistle', minute: 90, text: `¡Marcador global empatado ${aggA}-${aggB}! Habrá tanda de penales.` });
-                } else {
-                  updates.status = 'finished';
-                }
-            }
-        } else {
-            updates.status = 'finished';
+             const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
+             const aggA = (leg1 ? leg1.scoreA : 0) + match.scoreB; // Visitante en leg1 es local en leg2 no funciona asi siempre, asumimos orden
+             // Mejor logica leg id:
+             // TeamA en este partido es TeamB en leg1.
+             // Pero simplificado: scoreA es el local actual.
+             // Aggregado Real:
+             // Si este es leg2, TeamA es el que era visitante en Leg1 (probablemente).
+             // Asumimos seriesId linkea.
+             // Simplemente sumamos scores totales si coinciden ids.
+             // Simplificacion: scoreA de leg1 era Local(L1) vs Visitante(L1). scoreA de leg2 es Visitante(L1) vs Local(L1).
+             // No, leg2 es vuelta. El local de la vuelta es el visitante de la ida.
+             // Entonces AggTeamA_Original = leg1.scoreA + match.scoreB.
+             // AggTeamB_Original = leg1.scoreB + match.scoreA.
+             const aggScoreA = (leg1?.scoreA || 0) + match.scoreB; 
+             const aggScoreB = (leg1?.scoreB || 0) + match.scoreA;
+
+             if (aggScoreA === aggScoreB) {
+                 // Empate global
+                 // En copas normales suele haber prorroga en la vuelta
+                 if (match.definitionMode === 'et_penalties') {
+                     goToExtraTime = true;
+                 } else {
+                     goToPenalties = true;
+                 }
+                 isFinished = false;
+             }
         }
+
+        if (goToExtraTime) {
+            updates = { 
+                status: 'break_90', // Nuevo estado de intervalo
+                breakCounter: 0,
+                events: [...newEvents, { type: 'whistle', minute: currentMin, text: `¡FINAL DE LOS 90'! Empate en el marcador. Se viene la PRÓRROGA.` }] 
+            };
+        } else if (goToPenalties) {
+            updates = {
+                status: 'penalties',
+                penaltyShootout: getInitialPenaltyShootout(),
+                events: [...newEvents, { type: 'whistle', minute: currentMin, text: '¡FINAL DEL PARTIDO! Empate en el marcador. Habrá tanda de penales.' }]
+            };
+        } else {
+            // Terminado
+            updates = {
+                status: 'finished',
+                events: [...newEvents, { type: 'whistle', minute: currentMin, text: `¡FINAL DEL PARTIDO! (+${match.addedTime}')` }]
+            };
+        }
+
+      } else if (periodName === '1TE') {
+          // Fin primer tiempo extra
+          updates = {
+              status: 'break_et', // Nuevo estado intervalo
+              breakCounter: 0,
+              events: [...newEvents, { type: 'whistle', minute: currentMin, text: `Fin del 1T de Prórroga (+${match.addedTime}')` }]
+          };
+      } else if (periodName === '2TE') {
+          // Fin segundo tiempo extra (Final definitivo o penales)
+          const isTie = match.scoreA === match.scoreB;
+          // Nota: Si es leg2, chequear global. Pero asumamos que si llego a 2TE es porque el global estaba empatado y si sigue empatado en goles del partido (y no hay gol de visitante), sigue empatado global.
+          // Para simplificar, en 2TE chequeamos si hay empate en el partido actual si es single/knockout, o si persiste el empate global en leg2.
+          
+          let goToPenalties = false;
+          if (match.matchType === 'leg2') {
+             const leg1 = matches.find(m => m.seriesId === match.seriesId && m.matchType === 'leg1');
+             const aggScoreA = (leg1?.scoreA || 0) + match.scoreB; 
+             const aggScoreB = (leg1?.scoreB || 0) + match.scoreA;
+             if (aggScoreA === aggScoreB) goToPenalties = true;
+          } else {
+             if (isTie) goToPenalties = true;
+          }
+
+          if (goToPenalties) {
+              updates = {
+                status: 'penalties',
+                penaltyShootout: getInitialPenaltyShootout(),
+                events: [...newEvents, { type: 'whistle', minute: currentMin, text: '¡FINAL DE LA PRÓRROGA! Persiste el empate. Se define en PENALES.' }]
+              };
+          } else {
+              updates = {
+                status: 'finished',
+                events: [...newEvents, { type: 'whistle', minute: currentMin, text: `¡FINAL DE LA PRÓRROGA! (+${match.addedTime}')` }]
+              };
+          }
       }
       
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), updates);
@@ -618,7 +771,11 @@ export default function App() {
       if (teamB.style === 'possession') targetPossession -= 10;
       stats.possession = Math.round(stats.possession + ((targetPossession - stats.possession) * 0.15) + (Math.random()*4-2));
 
-      if (Math.random() < 0.22) { 
+      // Probabilidad de ataque ajustada por cansancio en prorroga (opcional, pero realista)
+      let fatigueFactor = 1.0;
+      if (periodName === '1TE' || periodName === '2TE') fatigueFactor = 0.7; // Menos acciones en prorroga
+
+      if (Math.random() < (0.22 * fatigueFactor)) { 
           // AJUSTE EXTREMO: El fuerte tiene casi todo el ataque
           let attackA = Math.pow(probA, 2) + (stats.possession/150); 
           let attackB = Math.pow(probB, 2) + ((100-stats.possession)/150);
@@ -650,7 +807,7 @@ export default function App() {
           }
       }
       
-      if (Math.random() < 0.08) { 
+      if (Math.random() < (0.08 * fatigueFactor)) { 
           if (Math.random() < 0.5) stats.foulsA++; else stats.foulsB++; 
           if (Math.random() < 0.005) {
              const isTeamA = Math.random() < 0.5;
@@ -863,7 +1020,9 @@ export default function App() {
       const stats = match.stats || { possession: 50, shotsA: 0, shotsB: 0, onTargetA: 0, onTargetB: 0, foulsA: 0, foulsB: 0, yellowA: 0, yellowB: 0, redA: 0, redB: 0, cornersA: 0, cornersB: 0 };
       const [seconds, setSeconds] = useState(0);
       
-      const isMatchLive = match.status === 'live' || match.status === 'halftime';
+      const timeLeft = useCountdown(match.startTime);
+
+      const isMatchLive = ['live', 'halftime', 'break_90', 'break_et'].includes(match.status);
       const isMatchFinished = match.status === 'finished' || match.status === 'penalties';
 
       // --- LIVE ODDS CALCULATION ---
@@ -884,19 +1043,36 @@ export default function App() {
       useEffect(() => { setSeconds(0); }, [match.currentMinute]);
       let timeDisplay = "";
       const displayMinute = String(match.currentMinute).padStart(2, '0');
-      const displaySeconds = (timeScale === 60000 && match.status === 'live' && match.currentMinute < 45) || (timeScale === 60000 && match.status === 'live' && match.currentMinute >= 45 && match.currentMinute < 90) ? String(seconds).padStart(2, '0') : '00';
-      timeDisplay = `${displayMinute}:${displaySeconds}`;
-      if (match.status === 'halftime') {
+      const displaySeconds = (timeScale === 60000 && match.status === 'live') ? String(seconds).padStart(2, '0') : '00';
+      
+      if (match.status === 'live') {
+          timeDisplay = `${displayMinute}:${displaySeconds}`;
+          // Lógica para mostrar tiempo agregado si se pasa del regular
+          let regular = 0;
+          if (match.period === '1T') regular = 45;
+          if (match.period === '2T') regular = 90;
+          if (match.period === '1TE') regular = 105;
+          if (match.period === '2TE') regular = 120;
+          
+          if (match.currentMinute > regular) {
+              timeDisplay = `${regular}+${match.currentMinute - regular}`;
+          }
+      }
+      else if (match.status === 'halftime') {
           const remaining = 15 - (match.halftimeCounter || 0);
           timeDisplay = `MT (${String(remaining).padStart(2, '0')}:00)`;
+      } else if (match.status === 'break_90') {
+           const remaining = 3 - (match.breakCounter || 0);
+           timeDisplay = `ESPERA (${String(remaining).padStart(2, '0')}:00)`;
+      } else if (match.status === 'break_et') {
+           const remaining = 2 - (match.breakCounter || 0);
+           timeDisplay = `CAMBIO LADO (${String(remaining).padStart(2, '0')}:00)`;
       } else if (match.status === 'penalties') {
           timeDisplay = "PENALES";
       } else if (match.status === 'finished' && match.penaltyShootout) {
           timeDisplay = "PENALES (F)";
-      } else if ((match.period === '1T' && match.currentMinute > 45) || (match.period === '2T' && match.currentMinute > 90)) {
-          const regular = match.period === '1T' ? 45 : 90;
-          const added = match.currentMinute - regular;
-          timeDisplay = `${String(regular).padStart(2, '0')}+${String(added).padStart(2, '0')}`;
+      } else if (match.status === 'finished') {
+          timeDisplay = "FINAL";
       }
       
       let globalScore = null;
@@ -999,11 +1175,23 @@ export default function App() {
                           )}
                           <div className="mt-4 flex flex-col items-center gap-2">
                               <Badge status={match.status} period={match.period} />
+                              
+                              {/* RELOJ DE PARTIDO */}
                               {match.status !== 'scheduled' && (
                                 <div className="flex items-center gap-2 text-yellow-300 font-mono text-xl font-bold drop-shadow">
                                     {(match.status !== 'penalties' && !(match.status === 'finished' && match.penaltyShootout)) && <Clock size={20} />} 
                                     {timeDisplay}
                                 </div>
+                              )}
+
+                              {/* CUENTA REGRESIVA */}
+                              {match.status === 'scheduled' && timeLeft.days !== undefined && (
+                                  <div className="flex flex-col items-center gap-1 mt-2 text-white/90">
+                                      <div className="text-[10px] uppercase font-bold tracking-widest text-[#F58220]">Faltan para el partido</div>
+                                      <div className="font-mono text-lg font-bold bg-black/20 px-3 py-1 rounded-md border border-white/10">
+                                          {timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m {timeLeft.seconds}s
+                                      </div>
+                                  </div>
                               )}
                           </div>
                       </div>
@@ -1094,7 +1282,7 @@ export default function App() {
                           {match.status !== 'finished' && (
                             <div className="bg-white border-l-4 border-l-[#009B3A] rounded-xl p-4 shadow-sm flex flex-col gap-2">
                                 {match.status === 'scheduled' && <Button onClick={() => startMatch(match)} className="w-full"><Play size={14}/> Iniciar Partido</Button>}
-                                {(match.status === 'live' || match.status === 'halftime') && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), { status: 'finished' })} className="w-full text-[#EF4135] border-[#EF4135] hover:bg-red-50">Terminar Partido</Button>}
+                                {['live', 'halftime', 'break_90', 'break_et'].includes(match.status) && <Button variant="secondary" onClick={() => updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'matches', match.id), { status: 'finished' })} className="w-full text-[#EF4135] border-[#EF4135] hover:bg-red-50">Terminar Partido</Button>}
                                 <div className="flex gap-2 mt-2">
                                     <button onClick={() => updateMatchScoreManual(match.id, 'A', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-[#009B3A] text-xs font-bold py-2 rounded border border-green-200">+ GOL LOC</button>
                                     <button onClick={() => updateMatchScoreManual(match.id, 'B', 1)} className="flex-1 bg-green-50 hover:bg-green-100 text-[#009B3A] text-xs font-bold py-2 rounded border border-green-200">+ GOL VIS</button>
@@ -1125,6 +1313,9 @@ export default function App() {
       const teamB = teams.find(t => t.id === match.teamBId);
       const teamADisplay = teamA?.shortName || teamA?.name.substring(0, 5) || 'LOC';
       const teamBDisplay = teamB?.shortName || teamB?.name.substring(0, 5) || 'VIS';
+      
+      const timeLeft = useCountdown(match.startTime);
+
       let scoreOpacityA = 'opacity-100';
       let scoreOpacityB = 'opacity-100';
       if (match.status === 'finished') {
@@ -1149,16 +1340,31 @@ export default function App() {
       
       let timeLabel = "";
       if (match.status === 'scheduled') {
-          timeLabel = formatDate(match.startTime);
+          if (timeLeft.days !== undefined) {
+              timeLabel = `${timeLeft.days}d ${timeLeft.hours}h ${timeLeft.minutes}m ${timeLeft.seconds}s`;
+          } else {
+              timeLabel = formatDate(match.startTime);
+          }
       } else if (match.status === 'penalties') { timeLabel = "PEN"; }
       else if (match.status === 'finished' && match.penaltyShootout) { timeLabel = "PEN(F)"; }
       else if (match.status !== 'finished') {
           if (match.status === 'halftime') { timeLabel = "MT"; }
-          else if ((match.period === '1T' && match.currentMinute > 45) || (match.period === '2T' && match.currentMinute > 90)) {
-              const regular = match.period === '1T' ? 45 : 90;
-              const added = match.currentMinute - regular;
-              timeLabel = `${String(regular).padStart(2, '0')}+${String(added).padStart(2, '0')}`;
-          } else { timeLabel = `${String(match.currentMinute).padStart(2, '0')}:00`; }
+          else if (match.status === 'break_90') { timeLabel = "FIN 90"; }
+          else if (match.status === 'break_et') { timeLabel = "C.LADO"; }
+          else {
+            // Lógica para mostrar tiempo regular y extra correctamente en tarjeta
+            let regular = 0;
+            if (match.period === '1T') regular = 45;
+            if (match.period === '2T') regular = 90;
+            if (match.period === '1TE') regular = 105;
+            if (match.period === '2TE') regular = 120;
+            
+            if (match.currentMinute > regular) {
+                timeLabel = `${regular}+${match.currentMinute - regular}`;
+            } else {
+                timeLabel = `${String(match.currentMinute).padStart(2, '0')}:00`; 
+            }
+          }
       } else {
           timeLabel = formatDate(match.startTime);
       }
@@ -1192,7 +1398,7 @@ export default function App() {
 
       return (
           <div onClick={onClick} className="p-4 hover:bg-slate-50 transition-all cursor-pointer group relative overflow-hidden rounded-xl border-l-4 border-l-[#091F40] bg-white shadow-sm">
-              {(match.status === 'live' || match.status === 'penalties') && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-[#EF4135]' : 'bg-[#009B3A]'}`}></div>}
+              {(['live', 'halftime', 'break_90', 'break_et', 'penalties'].includes(match.status)) && <div className={`absolute left-0 top-0 bottom-0 w-1 ${match.status === 'live' ? 'bg-[#EF4135]' : 'bg-[#009B3A]'}`}></div>}
               
               <div className="absolute top-2 right-2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                   {/* --- NUEVO: Botón editar fecha --- */}
@@ -1208,7 +1414,7 @@ export default function App() {
 
               <div className="flex justify-between items-center mb-1 pl-2">
                   <Badge status={match.status} period={match.period} />
-                  <span className="text-xs text-gray-500 font-mono font-bold uppercase">{timeLabel}</span>
+                  <span className={`text-xs font-mono font-bold uppercase ${match.status === 'scheduled' ? 'text-[#F58220]' : 'text-gray-500'}`}>{timeLabel}</span>
               </div>
               <div className="flex justify-between items-center mb-4 pl-2 text-xs text-[#009B3A] font-bold h-4">
                  <span className="truncate">
@@ -1246,7 +1452,7 @@ export default function App() {
   };
 
   const DashboardView = () => {
-    const liveMatches = matches.filter(m => m.status === 'live' || m.status === 'halftime' || m.status === 'penalties');
+    const liveMatches = matches.filter(m => ['live', 'halftime', 'break_90', 'break_et', 'penalties'].includes(m.status));
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
         <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-[#009B3A] to-[#06152b] p-8 shadow-xl text-white mb-8 border-b-4 border-[#F58220]">
@@ -1382,7 +1588,15 @@ export default function App() {
 
   const MatchesView = () => {
     const [isScheduling, setIsScheduling] = useState(false);
-    const [formData, setFormData] = useState({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
+    const [formData, setFormData] = useState({ 
+        teamAId: '', 
+        teamBId: '', 
+        startTime: '', 
+        startTimeLeg2: '', 
+        matchType: 'single', 
+        autoStart: true,
+        definitionMode: 'penalties' // 'none', 'penalties', 'et_penalties'
+    });
     
     const handleSchedule = async (e) => { 
         e.preventDefault(); 
@@ -1411,7 +1625,8 @@ export default function App() {
             jornada: null, 
             seriesId: null, 
             matchType: 'single',
-            initialOdds: initialOdds 
+            initialOdds: initialOdds,
+            definitionMode: formData.definitionMode 
         };
 
         if (formData.matchType === 'single') {
@@ -1423,14 +1638,14 @@ export default function App() {
             const batch = writeBatch(db);
             const matchesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
             const leg1Ref = doc(matchesCollection);
-            batch.set(leg1Ref, { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime, matchType: 'leg1', seriesId: seriesId });
+            batch.set(leg1Ref, { ...baseData, teamAId: formData.teamAId, teamBId: formData.teamBId, startTime: formData.startTime, matchType: 'leg1', seriesId: seriesId, definitionMode: 'none' }); // Ida sin definicion
             const leg2Ref = doc(matchesCollection);
             const initialOddsLeg2 = calculateOdds(teams.find(t=>t.id===formData.teamBId), teams.find(t=>t.id===formData.teamAId));
-            batch.set(leg2Ref, { ...baseData, teamAId: formData.teamBId, teamBId: formData.teamAId, startTime: formData.startTimeLeg2, matchType: 'leg2', seriesId: seriesId, initialOdds: initialOddsLeg2 });
+            batch.set(leg2Ref, { ...baseData, teamAId: formData.teamBId, teamBId: formData.teamAId, startTime: formData.startTimeLeg2, matchType: 'leg2', seriesId: seriesId, initialOdds: initialOddsLeg2, definitionMode: formData.definitionMode }); // Vuelta con definicion
             await batch.commit();
         }
         setIsScheduling(false); 
-        setFormData({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true });
+        setFormData({ teamAId: '', teamBId: '', startTime: '', startTimeLeg2: '', matchType: 'single', autoStart: true, definitionMode: 'penalties' });
     };
     
     const matchesToDisplay = matches.filter(m => m.matchType !== 'leg2');
@@ -1442,6 +1657,19 @@ export default function App() {
             <Select label="Tipo de Partido" options={[{value:'single', label:'Partido Único'}, {value:'twoLegged', label:'Ida y Vuelta'}]} value={formData.matchType} onChange={e=>setFormData({...formData, matchType: e.target.value})} className="md:col-span-2" />
             <Select label="Equipo Local (Ida)" options={[{value:'', label:'Local...'}, ...teams.map(t => ({value:t.id, label:t.name}))]} value={formData.teamAId} onChange={e=>setFormData({...formData, teamAId: e.target.value})} />
             <Select label="Equipo Visitante (Ida)" options={[{value:'', label:'Visita...'}, ...teams.filter(t=>t.id!==formData.teamAId).map(t => ({value:t.id, label:t.name}))]} value={formData.teamBId} onChange={e=>setFormData({...formData, teamBId: e.target.value})} />
+            
+            <Select 
+                label="Definición en caso de empate" 
+                options={[
+                    {value:'none', label:'Empate permitido (Sin definición)'}, 
+                    {value:'penalties', label:'Penales Directos'},
+                    {value:'et_penalties', label:'Prórroga + Penales'}
+                ]} 
+                value={formData.definitionMode} 
+                onChange={e=>setFormData({...formData, definitionMode: e.target.value})}
+                className="md:col-span-2"
+            />
+
             <Input label={formData.matchType === 'single' ? 'Fecha y Hora' : 'Fecha Partido Ida'} type="datetime-local" value={formData.startTime} onChange={e=>setFormData({...formData, startTime: e.target.value})} className={formData.matchType === 'single' ? 'md:col-span-2' : ''} />
             {formData.matchType === 'twoLegged' && ( <Input label="Fecha Partido Vuelta" type="datetime-local" value={formData.startTimeLeg2} onChange={e=>setFormData({...formData, startTimeLeg2: e.target.value})} /> )}
             <label className="flex items-center gap-2 text-sm text-[#009B3A] font-bold md:col-span-2"><input type="checkbox" checked={formData.autoStart} onChange={e=>setFormData({...formData, autoStart: e.target.checked})} className="accent-[#009B3A] w-4 h-4" /> Iniciar partidos automáticamente</label>
@@ -1580,7 +1808,8 @@ export default function App() {
             jornada: matchForm.jornada || null, 
             seriesId: null,
             matchType: 'group', 
-            initialOdds: initialOdds
+            initialOdds: initialOdds,
+            definitionMode: 'none' // En grupos suele haber empate
         });
         
         setMatchForm({ groupId: null, teamAId: '', teamBId: '', startTime: '', jornada: '' });
@@ -1680,7 +1909,8 @@ export default function App() {
             jornada: null,
             seriesId: null,
             matchType: 'knockout', 
-            initialOdds: initialOdds
+            initialOdds: initialOdds,
+            definitionMode: 'et_penalties' // POR DEFECTO: PRORROGA EN ELIMINATORIAS
         });
 
         const newMatches = tournament.knockout.matches.map(m => {
