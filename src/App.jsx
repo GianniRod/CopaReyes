@@ -60,20 +60,16 @@ import {
   Hourglass
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN FIREBASE CORREGIDA ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-    apiKey: "demo-key",
-    authDomain: "demo.firebaseapp.com",
-    projectId: "demo-project",
-    storageBucket: "demo.appspot.com",
-    messagingSenderId: "12345",
-    appId: "1:12345:web:12345"
-};
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+   const firebaseConfig = {
+       apiKey: import.meta.env.VITE_API_KEY,
+       authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+       projectId: import.meta.env.VITE_PROJECT_ID,
+       storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+       messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+       appId: import.meta.env.VITE_APP_ID
+   };
+   const appId = import.meta.env.VITE_PROJECT_ID || 'default-app-id';
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
 
 
 // --- UTILIDADES ---
